@@ -1,0 +1,10 @@
+[project]
+name = "metal-rl-envs"
+version = "0.1.0"
+description = "GPU-resident, massively-parallel RL environments on Apple Silicon via MLX"
+requires-python = ">=3.13"
+dependencies = [
+    "matplotlib>=3.11.1",
+    "mlx>=0.32.2",
+    "numpy>=2.5.3",
+]
