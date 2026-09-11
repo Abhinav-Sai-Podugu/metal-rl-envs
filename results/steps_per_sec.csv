@@ -1,0 +1,106 @@
+config,n,steps_per_sec,iters,warmup,repeats
+numpy,1,52566,256,16,3
+numpy,2,105600,256,16,3
+numpy,4,210568,256,16,3
+numpy,8,415894,256,16,3
+numpy,16,824677,256,16,3
+numpy,32,1595663,256,16,3
+numpy,64,2932719,256,16,3
+numpy,128,5472049,256,16,3
+numpy,256,9010191,256,16,3
+numpy,512,13744125,256,16,3
+numpy,1024,19433310,256,16,3
+numpy,2048,24759569,256,16,3
+numpy,4096,28878402,256,16,3
+numpy,8192,29455209,256,16,3
+numpy,16384,31287127,256,16,3
+numpy,32768,29884767,256,16,3
+numpy,65536,29627436,256,16,3
+numpy,131072,27767899,256,16,3
+numpy,262144,26254123,256,16,3
+numpy,524288,25909452,256,16,3
+numpy,1048576,24545803,256,16,3
+"mlx eager, eval every step",1,2853,256,16,3
+"mlx eager, eval every step",2,5858,256,16,3
+"mlx eager, eval every step",4,11597,256,16,3
+"mlx eager, eval every step",8,23283,256,16,3
+"mlx eager, eval every step",16,46941,256,16,3
+"mlx eager, eval every step",32,99319,256,16,3
+"mlx eager, eval every step",64,191943,256,16,3
+"mlx eager, eval every step",128,371746,256,16,3
+"mlx eager, eval every step",256,780458,256,16,3
+"mlx eager, eval every step",512,1490468,256,16,3
+"mlx eager, eval every step",1024,2899602,256,16,3
+"mlx eager, eval every step",2048,6103241,256,16,3
+"mlx eager, eval every step",4096,12043600,256,16,3
+"mlx eager, eval every step",8192,22427084,256,16,3
+"mlx eager, eval every step",16384,43925892,256,16,3
+"mlx eager, eval every step",32768,82392307,256,16,3
+"mlx eager, eval every step",65536,147571524,256,16,3
+"mlx eager, eval every step",131072,220442120,256,16,3
+"mlx eager, eval every step",262144,204743219,256,16,3
+"mlx eager, eval every step",524288,166044553,256,16,3
+"mlx eager, eval every step",1048576,148843957,256,16,3
+"mlx eager, eval every 32",1,5565,256,16,3
+"mlx eager, eval every 32",2,11728,256,16,3
+"mlx eager, eval every 32",4,24160,256,16,3
+"mlx eager, eval every 32",8,47070,256,16,3
+"mlx eager, eval every 32",16,95075,256,16,3
+"mlx eager, eval every 32",32,190487,256,16,3
+"mlx eager, eval every 32",64,369180,256,16,3
+"mlx eager, eval every 32",128,750165,256,16,3
+"mlx eager, eval every 32",256,1477836,256,16,3
+"mlx eager, eval every 32",512,2719169,256,16,3
+"mlx eager, eval every 32",1024,5662306,256,16,3
+"mlx eager, eval every 32",2048,12030197,256,16,3
+"mlx eager, eval every 32",4096,23635696,256,16,3
+"mlx eager, eval every 32",8192,43992696,256,16,3
+"mlx eager, eval every 32",16384,90115139,256,16,3
+"mlx eager, eval every 32",32768,163077565,256,16,3
+"mlx eager, eval every 32",65536,256791994,256,16,3
+"mlx eager, eval every 32",131072,333916893,256,16,3
+"mlx eager, eval every 32",262144,248896884,256,16,3
+"mlx eager, eval every 32",524288,168121608,256,16,3
+"mlx eager, eval every 32",1048576,151593130,256,16,3
+"mlx compiled, eval every step",1,4094,256,16,3
+"mlx compiled, eval every step",2,8057,256,16,3
+"mlx compiled, eval every step",4,15373,256,16,3
+"mlx compiled, eval every step",8,31130,256,16,3
+"mlx compiled, eval every step",16,63764,256,16,3
+"mlx compiled, eval every step",32,127587,256,16,3
+"mlx compiled, eval every step",64,251158,256,16,3
+"mlx compiled, eval every step",128,494576,256,16,3
+"mlx compiled, eval every step",256,1010119,256,16,3
+"mlx compiled, eval every step",512,2036674,256,16,3
+"mlx compiled, eval every step",1024,4057802,256,16,3
+"mlx compiled, eval every step",2048,8209370,256,16,3
+"mlx compiled, eval every step",4096,16016690,256,16,3
+"mlx compiled, eval every step",8192,31025559,256,16,3
+"mlx compiled, eval every step",16384,58907558,256,16,3
+"mlx compiled, eval every step",32768,109176379,256,16,3
+"mlx compiled, eval every step",65536,188951674,256,16,3
+"mlx compiled, eval every step",131072,307133686,256,16,3
+"mlx compiled, eval every step",262144,297834721,256,16,3
+"mlx compiled, eval every step",524288,259041926,256,16,3
+"mlx compiled, eval every step",1048576,258615990,256,16,3
+"mlx compiled, eval every 32",1,11443,256,16,3
+"mlx compiled, eval every 32",2,22594,256,16,3
+"mlx compiled, eval every 32",4,45829,256,16,3
+"mlx compiled, eval every 32",8,91053,256,16,3
+"mlx compiled, eval every 32",16,184511,256,16,3
+"mlx compiled, eval every 32",32,369466,256,16,3
+"mlx compiled, eval every 32",64,717208,256,16,3
+"mlx compiled, eval every 32",128,1457967,256,16,3
+"mlx compiled, eval every 32",256,2894966,256,16,3
+"mlx compiled, eval every 32",512,5795629,256,16,3
+"mlx compiled, eval every 32",1024,11763161,256,16,3
+"mlx compiled, eval every 32",2048,23227704,256,16,3
+"mlx compiled, eval every 32",4096,46866350,256,16,3
+"mlx compiled, eval every 32",8192,78733989,256,16,3
+"mlx compiled, eval every 32",16384,164759266,256,16,3
+"mlx compiled, eval every 32",32768,296815795,256,16,3
+"mlx compiled, eval every 32",65536,501073545,256,16,3
+"mlx compiled, eval every 32",131072,603450851,256,16,3
+"mlx compiled, eval every 32",262144,409951552,256,16,3
+"mlx compiled, eval every 32",524288,297440050,256,16,3
+"mlx compiled, eval every 32",1048576,282533538,256,16,3
