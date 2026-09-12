@@ -142,10 +142,17 @@ def markdown_table(rows):
 
 def environment_line():
     chip = subprocess.run(["sysctl", "-n", "machdep.cpu.brand_string"], capture_output=True, text=True).stdout.strip()
+    # Battery power depressed every CPU-bound number by ~30% in one run, so the
+    # power source is part of the environment, not an afterthought.
+    power = "on battery" if "Battery Power" in _pmset_batt() else "on AC power"
     return (
         f"{chip}, macOS {platform.mac_ver()[0]}, Python {platform.python_version()}, "
-        f"mlx {mx.__version__}, numpy {np.__version__}"
+        f"mlx {mx.__version__}, numpy {np.__version__}, {power}"
     )
+
+
+def _pmset_batt():
+    return subprocess.run(["pmset", "-g", "batt"], capture_output=True, text=True).stdout
 
 
 def parse_args():

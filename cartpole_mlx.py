@@ -28,21 +28,22 @@ from cartpole_np import (
 
 
 def reset(n):
-    return mx.random.uniform(-RESET_BOUND, RESET_BOUND, (n, 4))
+    return mx.random.uniform(-RESET_BOUND, RESET_BOUND, (4, n))
 
 
 def step(state, action):
     """Advance all N envs by one step, lazily. Returns (next_state, reward, done)."""
+    n = state.shape[1]
     stepped = _physics(state, action)
     done = _terminated(stepped)
-    fresh = reset(state.shape[0])
-    next_state = mx.where(done[:, None], fresh, stepped)
-    reward = mx.ones(state.shape[0])
+    fresh = reset(n)
+    next_state = mx.where(done[None, :], fresh, stepped)
+    reward = mx.ones(n)
     return next_state, reward, done
 
 
 def _physics(state, action):
-    x, x_dot, theta, theta_dot = state.T
+    x, x_dot, theta, theta_dot = state
     force = mx.where(action == 1, FORCE_MAG, -FORCE_MAG)
     cos, sin = mx.cos(theta), mx.sin(theta)
     temp = (force + POLE_MASS_LENGTH * theta_dot**2 * sin) / TOTAL_MASS
@@ -56,13 +57,12 @@ def _physics(state, action):
             x_dot + TAU * x_acc,
             theta + TAU * theta_dot,
             theta_dot + TAU * theta_acc,
-        ],
-        axis=1,
+        ]
     )
 
 
 def _terminated(state):
-    x, theta = state[:, 0], state[:, 2]
+    x, theta = state[0], state[2]
     return (mx.abs(x) > X_LIMIT) | (mx.abs(theta) > THETA_LIMIT)
 
 
