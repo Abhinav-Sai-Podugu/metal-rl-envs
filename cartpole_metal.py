@@ -36,6 +36,21 @@ def _f(v):
     return f"{float(v)!r}f"
 
 
+# Shared with acrobot_metal: a PCG hash and a uniform from its top 24 bits.
+RNG_HEADER = """
+uint pcg_hash(uint v) {
+    uint s = v * 747796405u + 2891336453u;
+    uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u;
+    return (w >> 22u) ^ w;
+}
+
+// Top 24 bits of a hash to a float in [-bound, bound).
+float uniform_pm(uint h, float bound) {
+    return (float(h >> 8) * (1.0f / 16777216.0f) * 2.0f - 1.0f) * bound;
+}
+"""
+
+
 _HEADER = f"""
 constant float GRAVITY = {_f(GRAVITY)};
 constant float POLE_MASS = {_f(POLE_MASS)};
@@ -48,16 +63,7 @@ constant float X_LIMIT = {_f(X_LIMIT)};
 constant float THETA_LIMIT = {_f(THETA_LIMIT)};
 constant float RESET_BOUND = {_f(RESET_BOUND)};
 
-uint pcg_hash(uint v) {{
-    uint s = v * 747796405u + 2891336453u;
-    uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u;
-    return (w >> 22u) ^ w;
-}}
-
-// Top 24 bits of a hash to a float in [-bound, bound).
-float uniform_pm(uint h, float bound) {{
-    return (float(h >> 8) * (1.0f / 16777216.0f) * 2.0f - 1.0f) * bound;
-}}
+{RNG_HEADER}
 """
 
 _SOURCE = """

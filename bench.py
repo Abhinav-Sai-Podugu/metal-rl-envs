@@ -37,22 +37,22 @@ import cartpole_np
 RESULTS = Path("results")
 
 
-def numpy_rollout(n, iters):
+def numpy_rollout(n, iters, env=cartpole_np, n_actions=2):
     rng = np.random.default_rng(0)
-    state = cartpole_np.reset(n, rng)
+    state = env.reset(n, rng)
     for _ in range(iters):
-        state, _, _ = cartpole_np.step(state, rng.integers(0, 2, size=n), rng)
+        state, _, _ = env.step(state, rng.integers(0, n_actions, size=n), rng)
     return state
 
 
-def mlx_rollout(n, iters, step, eval_every):
+def mlx_rollout(n, iters, step, eval_every, reset=cartpole_mlx.reset, n_actions=2):
     """Chain `eval_every` lazy steps, then evaluate everything the env produced
     in that window. A rollout buffer would consume state, rewards and dones,
     so all three are materialised, not just the state."""
-    state = cartpole_mlx.reset(n)
+    state = reset(n)
     pending = []
     for i in range(1, iters + 1):
-        state, reward, done = step(state, mx.random.randint(0, 2, (n,)))
+        state, reward, done = step(state, mx.random.randint(0, n_actions, (n,)))
         pending += [reward, done]
         if i % eval_every == 0:
             mx.eval(state, *pending)
