@@ -3,6 +3,15 @@
 Abhinav is starting this project here. This file is the handoff; he takes the
 session from this point. Read it, then work with him directly.
 
+## Status (2026-09-16)
+
+v1 and v2 are shipped and public. v1: batched CartPole, numpy vs MLX, the
+GPU wins above N ≈ 4K and peaks at 19x. v2: PPO on it; the environment is
+not the bottleneck at any N, the update is, and fixed hyperparameters make
+larger N slower. Both findings, tables and methodology are in README.md.
+Open v3 candidates: custom Metal kernel for the step, a heavier environment,
+learning-rate scaling with N. Nothing is started.
+
 ## What this is
 
 GPU-resident, massively-parallel reinforcement learning environments on Apple

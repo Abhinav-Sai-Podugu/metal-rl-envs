@@ -83,7 +83,79 @@ all of it in a few minutes.
 | 524,288 | 29,821,233 | 214,494,032 | 226,420,572 | 430,930,003 | 374,559,882 | 14.45x |
 | 1,048,576 | 25,853,650 | 201,065,370 | 190,864,944 | 448,654,361 | 423,491,089 | 17.35x |
 
-## Methodology
+## v2: does a faster environment train faster?
+
+No. Not this environment, not this policy.
+
+![PPO wall-clock and environment steps to solve against N, environment on GPU vs CPU](results/ppo.png)
+
+The same PPO, same hyperparameters, same MLP policy on the GPU, with the
+environment either on the GPU (MLX; a rollout window is one lazy graph) or on
+the CPU (numpy; one host sync per step to hand the action back). Five seeds
+per point, median over solved seeds, individual seeds as faint dots.
+
+- **CartPole solves in about 0.1 s of training at N = 256** on either
+  backend, and under half a second anywhere from N = 16 to N = 1,024.
+- **Where the environment lives changes wall-clock by at most ~1.5x**, and
+  seed-to-seed variance is larger than that. The 5x at N = 256 and the 0.6x
+  at N = 4,096 in the table are both seed noise; look at the dots, not the
+  medians, at those two points.
+- **The environment was never the bottleneck.** Profiling one iteration on the
+  GPU backend: the PPO update takes about 80% of training time at N = 256 and
+  over 90% at N ≥ 4K. The rollout itself is bound by the policy forward pass
+  and action sampling, not the physics: at N = 16K it runs at 22M
+  environment steps per second while the environment alone does 150M. The
+  numpy environment makes the rollout 2.4x slower, and the rollout is a
+  minority of the iteration, so the 20x from v1 mostly has nothing to
+  accelerate.
+- **More environments buy nothing with fixed hyperparameters.** Above
+  N = 256, PPO needs about 10 iterations to solve regardless of N, so samples
+  to solve grow from 7K at N = 16 to 18M at N = 65,536, and wall-clock grows
+  linearly past the sweet spot at N ≈ 256 to 1,024. This is batch-size
+  scaling without learning-rate scaling. Nothing was tuned per N, by design;
+  a per-N learning rate would be a different experiment.
+- **Large N is also less stable.** At N = 65,536 one seed in five failed to
+  solve within the 120 s budget on each backend, and at N = 16K two seeds
+  took ten times longer than the other three.
+
+### Table
+
+Same machine and conditions as v1. Seconds are training time only, median
+over solved seeds; steps likewise. Full per-seed data in `results/ppo.csv`;
+`uv run bench_ppo.py` regenerates it in about six minutes.
+
+| N | mlx env: s to solve | mlx env: steps to solve | solved | numpy env: s to solve | numpy env: steps to solve | solved | CPU s / GPU s |
+|--:|--:|--:|--:|--:|--:|--:|--:|
+| 16 | 0.4 | 7,168 | 5/5 | 0.7 | 17,408 | 5/5 | 1.55x |
+| 64 | 0.9 | 86,016 | 5/5 | 1.3 | 137,216 | 5/5 | 1.50x |
+| 256 | 0.1 | 57,344 | 5/5 | 0.7 | 262,144 | 5/5 | 5.00x |
+| 1,024 | 0.3 | 360,448 | 5/5 | 0.4 | 360,448 | 5/5 | 1.26x |
+| 4,096 | 1.6 | 1,441,792 | 5/5 | 1.0 | 1,441,792 | 5/5 | 0.62x |
+| 16,384 | 3.2 | 5,242,880 | 5/5 | 3.5 | 5,242,880 | 5/5 | 1.10x |
+| 65,536 | 10.7 | 17,825,792 | 4/5 | 11.9 | 17,825,792 | 4/5 | 1.11x |
+
+### v2 methodology
+
+- **The clock covers rollout and update only**, and includes the first
+  iteration's compile time. The evaluation rollouts that detect "solved" are
+  outside it: they cost ~50 ms each and would dominate a 0.1 s run.
+- **Solved is Gym's CartPole-v1 criterion evaluated in parallel:** the greedy
+  policy, run from reset for 500 steps on 2,048 environments, survives 475
+  steps on average.
+- **The training environment has no time limit.** Episodes run until failure;
+  a 32-step rollout window with value bootstrapping treats it as a continuing
+  task.
+- **Hyperparameters are CleanRL's CartPole defaults, fixed across N:** 32-step
+  windows, 4 epochs, 4 minibatches, Adam at 2.5e-4 with no annealing, clip
+  0.2, GAE λ 0.95, γ 0.99, entropy 0.01, value 0.5, grad norm 0.5. Policy and
+  value are separate 4-64-64 tanh MLPs.
+- **The train step is compiled** with model and optimizer state threaded
+  through, the standard MLX pattern. It made the update 1.35x to 1.6x faster,
+  which works against the conclusion above, not for it.
+- Runs stop at 120 s of training; unsolved seeds are counted in the table and
+  excluded from the medians.
+
+## v1 methodology
 
 Fixed before any number existed, so the benchmark could not be tuned toward a
 flattering result.
@@ -126,8 +198,10 @@ flattering result.
 
 ```
 uv sync
-uv run python test_cartpole.py
-uv run bench.py
+uv run python test_cartpole.py && uv run python test_ppo.py
+uv run bench.py        # v1: environment throughput sweep, ~3 min
+uv run bench_ppo.py    # v2: PPO wall-clock to solve sweep, ~6 min
+uv run ppo.py --n 256  # one PPO run with a per-iteration log
 ```
 
 ## Layout
@@ -139,11 +213,17 @@ uv run bench.py
 - `test_cartpole.py`: contract tests, including agreement with a scalar
   transcription of Gym's CartPole step and numpy/MLX parity.
 - `bench.py`: the sweep, the timing rule, the CSV, the plot, the table.
-- `results/`: the CSV and the plot from the run above, and the first
-  sweep with the (N, 4) layout for comparison.
+- `ppo.py`: PPO on the batched environment, with the environment on either
+  device. Read after the two environment files.
+- `bench_ppo.py`: the v2 sweep, plot and table.
+- `test_ppo.py`: GAE against a scalar reference, log-prob and entropy against
+  numpy, and one short end-to-end learning check.
+- `results/`: CSVs and plots from the runs above, and the first v1 sweep with
+  the (N, 4) layout for comparison.
 
 ## Scope
 
-v1 is exactly this: one environment, two implementations, one sweep, one
-table, one plot. Not here: any training loop, PPO, reward curves, custom Metal
-kernels, other environments.
+v1: one environment, two implementations, one throughput sweep. v2: PPO on
+it, environment on either device, wall-clock to solve. Each shipped complete.
+Not here: custom Metal kernels, other environments, per-N learning-rate
+scaling. Any of those would be v3.
