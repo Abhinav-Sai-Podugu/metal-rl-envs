@@ -5,12 +5,13 @@ session from this point. Read it, then work with him directly.
 
 ## Status (2026-09-16)
 
-v1 and v2 are shipped and public. v1: batched CartPole, numpy vs MLX, the
-GPU wins above N ≈ 4K and peaks at 19x. v2: PPO on it; the environment is
-not the bottleneck at any N, the update is, and fixed hyperparameters make
-larger N slower. Both findings, tables and methodology are in README.md.
-Open v3 candidates: custom Metal kernel for the step, a heavier environment,
-learning-rate scaling with N. Nothing is started.
+v1, v2 and v3 are shipped and public. v1: batched CartPole, numpy vs MLX,
+the GPU wins above N ≈ 4K and peaks at 19x. v2: PPO on it; the environment
+is not the bottleneck at any N, the update is, and fixed hyperparameters
+make larger N slower. v3: the step as one hand-written Metal kernel beats
+mx.compile 1.7x to 2.9x at every N and reaches 1.25B steps/s at N = 1M, 50x
+numpy. Findings, tables and methodology are in README.md. Open candidates:
+a heavier environment, learning-rate scaling with N. Nothing is started.
 
 ## What this is
 

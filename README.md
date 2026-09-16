@@ -155,6 +155,84 @@ over solved seeds; steps likewise. Full per-seed data in `results/ppo.csv`;
 - Runs stop at 120 s of training; unsolved seeds are counted in the table and
   excluded from the medians.
 
+## v3: does a hand-written Metal kernel beat `mx.compile`?
+
+Yes, by 1.7x to 2.9x at every N, and it raises the ceiling: **1.25 billion
+environment steps per second at N = 1,048,576, 50x the numpy baseline.**
+
+![environment steps per second against N, hand-written Metal kernel vs compiled MLX vs numpy](results/kernel.png)
+
+The whole step is one `mx.fast.metal_kernel`: physics, termination, the
+masked reset, and the reset's random numbers from an in-kernel PCG hash. One
+thread per environment. numpy and the two best v1 configurations were re-run
+in the same session, and they reproduce the v1 table within ~5%.
+
+- **At small N the win is dispatch count.** The compiled step still launches
+  the reset's random-number generation and the fused arithmetic as separate
+  kernels; the hand-written step is one launch, plus the action sampling both
+  share. That is 1.7x from N = 1 to N = 64. Per-step overhead drops from
+  101 µs to 59 µs with the lazy chain, still three times numpy's 20 µs, so
+  the CPU keeps small N.
+- **The crossover moves one notch, to between N = 1,024 and 2,048** (from
+  2,048 to 4,096). One launch is still one launch; only the constant shrank.
+- **At large N the win is memory traffic.** The compiled step materialises
+  the (4, N) reset array and the stacked output; the kernel reads four floats
+  and an action per environment and writes four floats, a reward and a done.
+  That is roughly 45 bytes per environment-step including the sampled
+  action, so 1.25 billion steps per second is ~56 GB/s, about a third of the
+  M3 Pro's memory bandwidth. Per environment-step the compiled step costs
+  2.3 ns at N = 1M; the kernel costs 0.8 ns.
+- **Past N ≈ 512K the lazy chain costs more than it saves.** With the kernel,
+  evaluating every step beats chaining 32 at N = 1M (1.25B against 1.04B).
+  The chain keeps 32 windows of rewards and dones alive, 5 MB each at that
+  size, and there is no dispatch overhead left to hide.
+- The kernel is 60 lines of Metal. Read `cartpole_metal.py` after the MLX
+  module: same formulas, one thread per column of the (4, N) state, and
+  ternaries instead of `mx.where`, which the compiler lowers to selects, not
+  branches.
+
+### Table
+
+Same machine and conditions as v1, same parameters: median of 3 runs of 256
+timed steps after 16 untimed. Full data in `results/kernel.csv`;
+`uv run bench_kernel.py` regenerates it in a few minutes.
+
+| N | numpy | mlx compiled, eval every step | mlx compiled, eval every 32 | metal kernel, eval every step | metal kernel, eval every 32 | best kernel / best compiled |
+|--:|--:|--:|--:|--:|--:|--:|
+| 1 | 48,918 | 4,263 | 9,906 | 5,502 | 17,010 | 1.72x |
+| 2 | 97,931 | 8,546 | 22,392 | 10,081 | 39,310 | 1.76x |
+| 4 | 195,182 | 17,225 | 45,422 | 17,899 | 77,003 | 1.70x |
+| 8 | 389,739 | 34,485 | 87,962 | 46,131 | 151,670 | 1.72x |
+| 16 | 774,407 | 66,760 | 181,399 | 91,917 | 313,489 | 1.73x |
+| 32 | 1,506,148 | 125,542 | 352,012 | 187,880 | 593,383 | 1.69x |
+| 64 | 2,876,173 | 261,357 | 702,803 | 371,482 | 1,252,799 | 1.78x |
+| 128 | 5,289,427 | 503,794 | 1,337,101 | 756,668 | 2,496,926 | 1.87x |
+| 256 | 9,141,157 | 1,036,208 | 2,735,183 | 1,504,564 | 5,360,234 | 1.96x |
+| 512 | 14,305,266 | 1,497,055 | 5,315,633 | 2,961,131 | 10,674,413 | 2.01x |
+| 1,024 | 21,023,659 | 3,834,178 | 10,271,782 | 5,898,188 | 18,603,868 | 1.81x |
+| 2,048 | 27,167,587 | 7,865,323 | 18,779,008 | 10,267,901 | 41,965,560 | 2.23x |
+| 4,096 | 32,295,800 | 15,868,331 | 41,473,764 | 19,827,771 | 71,480,618 | 1.72x |
+| 8,192 | 35,092,366 | 30,793,130 | 79,650,278 | 45,175,862 | 129,720,074 | 1.63x |
+| 16,384 | 35,914,865 | 61,117,291 | 161,581,694 | 80,572,856 | 236,610,409 | 1.46x |
+| 32,768 | 32,754,869 | 115,052,380 | 306,953,168 | 141,288,958 | 374,226,914 | 1.22x |
+| 65,536 | 30,376,152 | 211,018,790 | 505,483,737 | 308,944,933 | 705,038,618 | 1.39x |
+| 131,072 | 30,661,155 | 337,349,986 | 596,870,312 | 480,073,707 | 1,132,956,168 | 1.90x |
+| 262,144 | 27,002,721 | 408,567,298 | 475,230,925 | 756,912,418 | 1,049,329,534 | 2.21x |
+| 524,288 | 25,475,443 | 437,805,459 | 428,946,021 | 964,868,911 | 1,045,124,908 | 2.39x |
+| 1,048,576 | 24,757,006 | 433,945,335 | 385,705,709 | 1,248,877,786 | 1,044,792,199 | 2.88x |
+
+### v3 methodology
+
+- **The kernel's random numbers are not MLX's.** Resets use a PCG hash of a
+  per-call counter and the thread index. Tests check that resets stay in
+  bound, differ per call and per environment, and match the uniform
+  distribution's mean and standard deviation over 16K samples.
+- **The physics parity test is the same one the MLX port passes**, at 1e-4
+  instead of 1e-5, because Metal's transcendental functions differ from
+  numpy's in the last bits.
+- Everything else is v1's rule unchanged: same harness, same iteration
+  counts, same eval-boundary sweep, the power source recorded.
+
 ## v1 methodology
 
 Fixed before any number existed, so the benchmark could not be tuned toward a
@@ -201,6 +279,7 @@ uv sync
 uv run python test_cartpole.py && uv run python test_ppo.py
 uv run bench.py        # v1: environment throughput sweep, ~3 min
 uv run bench_ppo.py    # v2: PPO wall-clock to solve sweep, ~6 min
+uv run bench_kernel.py # v3: Metal kernel vs compiled step, ~3 min
 uv run ppo.py --n 256  # one PPO run with a per-iteration log
 ```
 
@@ -210,12 +289,16 @@ uv run ppo.py --n 256  # one PPO run with a per-iteration log
 - `cartpole_mlx.py`: the same code on MLX, plus the compiled step and the
   one MLX-specific trap (compile freezes the global PRNG key unless it is
   declared as an input and output).
-- `test_cartpole.py`: contract tests, including agreement with a scalar
-  transcription of Gym's CartPole step and numpy/MLX parity.
+- `cartpole_metal.py`: the step as one hand-written Metal kernel, with its
+  in-kernel random resets. Read after the MLX module.
+- `test_cartpole.py`: contract tests for all three implementations, including
+  agreement with a scalar transcription of Gym's CartPole step and parity of
+  MLX and Metal against numpy.
 - `bench.py`: the sweep, the timing rule, the CSV, the plot, the table.
 - `ppo.py`: PPO on the batched environment, with the environment on either
   device. Read after the two environment files.
 - `bench_ppo.py`: the v2 sweep, plot and table.
+- `bench_kernel.py`: the v3 sweep, reusing the v1 harness.
 - `test_ppo.py`: GAE against a scalar reference, log-prob and entropy against
   numpy, and one short end-to-end learning check.
 - `results/`: CSVs and plots from the runs above, and the first v1 sweep with
@@ -224,6 +307,7 @@ uv run ppo.py --n 256  # one PPO run with a per-iteration log
 ## Scope
 
 v1: one environment, two implementations, one throughput sweep. v2: PPO on
-it, environment on either device, wall-clock to solve. Each shipped complete.
-Not here: custom Metal kernels, other environments, per-N learning-rate
-scaling. Any of those would be v3.
+it, environment on either device, wall-clock to solve. v3: the step as one
+hand-written Metal kernel against the compiled step. Each shipped complete.
+Not here: other environments, per-N learning-rate scaling, the kernel inside
+PPO (v2 showed the environment is not where PPO's time goes).

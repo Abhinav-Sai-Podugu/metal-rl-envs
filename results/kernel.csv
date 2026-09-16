@@ -1,0 +1,106 @@
+config,n,steps_per_sec,iters,warmup,repeats
+numpy,1,48918,256,16,3
+numpy,2,97931,256,16,3
+numpy,4,195182,256,16,3
+numpy,8,389739,256,16,3
+numpy,16,774407,256,16,3
+numpy,32,1506148,256,16,3
+numpy,64,2876173,256,16,3
+numpy,128,5289427,256,16,3
+numpy,256,9141157,256,16,3
+numpy,512,14305266,256,16,3
+numpy,1024,21023659,256,16,3
+numpy,2048,27167587,256,16,3
+numpy,4096,32295800,256,16,3
+numpy,8192,35092366,256,16,3
+numpy,16384,35914865,256,16,3
+numpy,32768,32754869,256,16,3
+numpy,65536,30376152,256,16,3
+numpy,131072,30661155,256,16,3
+numpy,262144,27002721,256,16,3
+numpy,524288,25475443,256,16,3
+numpy,1048576,24757006,256,16,3
+"mlx compiled, eval every step",1,4263,256,16,3
+"mlx compiled, eval every step",2,8546,256,16,3
+"mlx compiled, eval every step",4,17225,256,16,3
+"mlx compiled, eval every step",8,34485,256,16,3
+"mlx compiled, eval every step",16,66760,256,16,3
+"mlx compiled, eval every step",32,125542,256,16,3
+"mlx compiled, eval every step",64,261357,256,16,3
+"mlx compiled, eval every step",128,503794,256,16,3
+"mlx compiled, eval every step",256,1036208,256,16,3
+"mlx compiled, eval every step",512,1497055,256,16,3
+"mlx compiled, eval every step",1024,3834178,256,16,3
+"mlx compiled, eval every step",2048,7865323,256,16,3
+"mlx compiled, eval every step",4096,15868331,256,16,3
+"mlx compiled, eval every step",8192,30793130,256,16,3
+"mlx compiled, eval every step",16384,61117291,256,16,3
+"mlx compiled, eval every step",32768,115052380,256,16,3
+"mlx compiled, eval every step",65536,211018790,256,16,3
+"mlx compiled, eval every step",131072,337349986,256,16,3
+"mlx compiled, eval every step",262144,408567298,256,16,3
+"mlx compiled, eval every step",524288,437805459,256,16,3
+"mlx compiled, eval every step",1048576,433945335,256,16,3
+"mlx compiled, eval every 32",1,9906,256,16,3
+"mlx compiled, eval every 32",2,22392,256,16,3
+"mlx compiled, eval every 32",4,45422,256,16,3
+"mlx compiled, eval every 32",8,87962,256,16,3
+"mlx compiled, eval every 32",16,181399,256,16,3
+"mlx compiled, eval every 32",32,352012,256,16,3
+"mlx compiled, eval every 32",64,702803,256,16,3
+"mlx compiled, eval every 32",128,1337101,256,16,3
+"mlx compiled, eval every 32",256,2735183,256,16,3
+"mlx compiled, eval every 32",512,5315633,256,16,3
+"mlx compiled, eval every 32",1024,10271782,256,16,3
+"mlx compiled, eval every 32",2048,18779008,256,16,3
+"mlx compiled, eval every 32",4096,41473764,256,16,3
+"mlx compiled, eval every 32",8192,79650278,256,16,3
+"mlx compiled, eval every 32",16384,161581694,256,16,3
+"mlx compiled, eval every 32",32768,306953168,256,16,3
+"mlx compiled, eval every 32",65536,505483737,256,16,3
+"mlx compiled, eval every 32",131072,596870312,256,16,3
+"mlx compiled, eval every 32",262144,475230925,256,16,3
+"mlx compiled, eval every 32",524288,428946021,256,16,3
+"mlx compiled, eval every 32",1048576,385705709,256,16,3
+"metal kernel, eval every step",1,5502,256,16,3
+"metal kernel, eval every step",2,10081,256,16,3
+"metal kernel, eval every step",4,17899,256,16,3
+"metal kernel, eval every step",8,46131,256,16,3
+"metal kernel, eval every step",16,91917,256,16,3
+"metal kernel, eval every step",32,187880,256,16,3
+"metal kernel, eval every step",64,371482,256,16,3
+"metal kernel, eval every step",128,756668,256,16,3
+"metal kernel, eval every step",256,1504564,256,16,3
+"metal kernel, eval every step",512,2961131,256,16,3
+"metal kernel, eval every step",1024,5898188,256,16,3
+"metal kernel, eval every step",2048,10267901,256,16,3
+"metal kernel, eval every step",4096,19827771,256,16,3
+"metal kernel, eval every step",8192,45175862,256,16,3
+"metal kernel, eval every step",16384,80572856,256,16,3
+"metal kernel, eval every step",32768,141288958,256,16,3
+"metal kernel, eval every step",65536,308944933,256,16,3
+"metal kernel, eval every step",131072,480073707,256,16,3
+"metal kernel, eval every step",262144,756912418,256,16,3
+"metal kernel, eval every step",524288,964868911,256,16,3
+"metal kernel, eval every step",1048576,1248877786,256,16,3
+"metal kernel, eval every 32",1,17010,256,16,3
+"metal kernel, eval every 32",2,39310,256,16,3
+"metal kernel, eval every 32",4,77003,256,16,3
+"metal kernel, eval every 32",8,151670,256,16,3
+"metal kernel, eval every 32",16,313489,256,16,3
+"metal kernel, eval every 32",32,593383,256,16,3
+"metal kernel, eval every 32",64,1252799,256,16,3
+"metal kernel, eval every 32",128,2496926,256,16,3
+"metal kernel, eval every 32",256,5360234,256,16,3
+"metal kernel, eval every 32",512,10674413,256,16,3
+"metal kernel, eval every 32",1024,18603868,256,16,3
+"metal kernel, eval every 32",2048,41965560,256,16,3
+"metal kernel, eval every 32",4096,71480618,256,16,3
+"metal kernel, eval every 32",8192,129720074,256,16,3
+"metal kernel, eval every 32",16384,236610409,256,16,3
+"metal kernel, eval every 32",32768,374226914,256,16,3
+"metal kernel, eval every 32",65536,705038618,256,16,3
+"metal kernel, eval every 32",131072,1132956168,256,16,3
+"metal kernel, eval every 32",262144,1049329534,256,16,3
+"metal kernel, eval every 32",524288,1045124908,256,16,3
+"metal kernel, eval every 32",1048576,1044792199,256,16,3

@@ -5,6 +5,7 @@ import math
 import mlx.core as mx
 import numpy as np
 
+import cartpole_metal as env_metal
 import cartpole_mlx as env_mlx
 import cartpole_np as env
 
@@ -141,6 +142,46 @@ def test_mlx_compiled_matches_eager():
     compiled = env_mlx.step_compiled(state, action)[0]
     live = np.array(~env_mlx._terminated(eager))
     np.testing.assert_allclose(np.array(compiled)[:, live], np.array(eager)[:, live], atol=1e-6)
+
+
+def test_metal_matches_numpy():
+    """Same gate as the MLX port: identical physics and termination on the live rows."""
+    state, action = _random_batch(100)
+    next_state, reward, done = env_metal.step(mx.array(state), mx.array(action))
+    stepped_np = env._physics(state, action)
+    done_np = env._terminated(stepped_np)
+    live = ~done_np
+    np.testing.assert_allclose(np.array(next_state)[:, live], stepped_np[:, live], atol=1e-4)
+    assert (np.array(done) == done_np).all()
+    assert np.all(np.array(reward) == 1.0)
+    assert next_state.dtype == mx.float32 and reward.dtype == mx.float32 and done.dtype == mx.bool_
+
+
+def test_metal_resets_are_uniform_and_vary():
+    """The in-kernel hash generator must give resets in bound, different per
+    call, different per env, and uniform: mean 0, std RESET_BOUND / sqrt(3)."""
+    env_metal.reseed(0)
+    n = 4096
+    all_done = mx.full((4, n), 3.0)
+    first = np.array(env_metal.step(all_done, mx.zeros(n, dtype=mx.int32))[0])
+    second = np.array(env_metal.step(all_done, mx.zeros(n, dtype=mx.int32))[0])
+    assert np.all(np.abs(first) <= env.RESET_BOUND)
+    assert not np.allclose(first, second)
+    assert len(np.unique(first[0])) > n * 0.99
+    assert abs(first.mean()) < 0.002
+    assert abs(first.std() - env.RESET_BOUND / np.sqrt(3)) < 0.002
+
+
+def test_metal_lazy_chain_then_single_eval():
+    env_metal.reseed(0)
+    n = 4096
+    state = env_mlx.reset(n)
+    for _ in range(100):
+        state, _, _ = env_metal.step(state, mx.random.randint(0, 2, (n,)))
+    mx.eval(state)
+    out = np.array(state)
+    assert np.isfinite(out).all()
+    assert not env._terminated(out).any()
 
 
 if __name__ == "__main__":

@@ -82,9 +82,9 @@ def steps_per_sec(rollout, n, iters, warmup, repeats):
     return n * iters / statistics.median(seconds)
 
 
-def sweep(args):
+def sweep(args, configs):
     rows = []
-    for name, rollout in configs(args.eval_every).items():
+    for name, rollout in configs.items():
         for exp in range(args.max_exp + 1):
             n = 2**exp
             sps = steps_per_sec(rollout, n, args.iters, args.warmup, args.repeats)
@@ -93,8 +93,8 @@ def sweep(args):
     return rows
 
 
-def write_csv(rows, args):
-    with open(RESULTS / "steps_per_sec.csv", "w", newline="") as f:
+def write_csv(rows, args, path):
+    with open(path, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["config", "n", "steps_per_sec", "iters", "warmup", "repeats"])
         for r in rows:
@@ -105,7 +105,7 @@ def write_csv(rows, args):
 COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"]
 
 
-def plot(rows):
+def plot(rows, path, title):
     fig, ax = plt.subplots(figsize=(8, 5), facecolor="#fcfcfb")
     ax.set_facecolor("#fcfcfb")
     names = list(dict.fromkeys(r["config"] for r in rows))
@@ -116,27 +116,29 @@ def plot(rows):
     ax.set_yscale("log")
     ax.set_xlabel("N environments stepped as one batch")
     ax.set_ylabel("environment steps / second")
-    ax.set_title("Batched CartPole: numpy CPU vs MLX GPU, Apple M3 Pro", color="#0b0b0b")
+    ax.set_title(title, color="#0b0b0b")
     ax.grid(True, which="major", color="#e4e3df", linewidth=0.6)
     ax.tick_params(colors="#52514e")
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)
     ax.legend(frameon=False, fontsize=9)
     fig.tight_layout()
-    fig.savefig(RESULTS / "steps_per_sec.png", dpi=150)
+    fig.savefig(path, dpi=150)
 
 
-def markdown_table(rows):
+def markdown_table(rows, ratio=("best MLX / numpy", "mlx", "numpy")):
+    """Last column: best config whose name starts with ratio[1] over best starting with ratio[2]."""
+    label, num, den = ratio
     names = list(dict.fromkeys(r["config"] for r in rows))
     by = {(r["config"], r["n"]): r["steps_per_sec"] for r in rows}
     ns = sorted({r["n"] for r in rows})
-    head = "| N | " + " | ".join(names) + " | best MLX / numpy |"
+    head = "| N | " + " | ".join(names) + f" | {label} |"
     sep = "|--:|" + "--:|" * (len(names) + 1)
     lines = [head, sep]
     for n in ns:
-        best_mlx = max(by[(c, n)] for c in names if c != "numpy")
+        best = lambda prefix: max(by[(c, n)] for c in names if c.startswith(prefix))
         cells = [f"{by[(c, n)]:,}" for c in names]
-        lines.append(f"| {n:,} | " + " | ".join(cells) + f" | {best_mlx / by[('numpy', n)]:.2f}x |")
+        lines.append(f"| {n:,} | " + " | ".join(cells) + f" | {best(num) / best(den):.2f}x |")
     return "\n".join(lines)
 
 
@@ -155,8 +157,8 @@ def _pmset_batt():
     return subprocess.run(["pmset", "-g", "batt"], capture_output=True, text=True).stdout
 
 
-def parse_args():
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+def parse_args(description=__doc__):
+    p = argparse.ArgumentParser(description=description, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--max-exp", type=int, default=20, help="sweep N = 2**0 .. 2**max_exp")
     p.add_argument("--iters", type=int, default=256, help="timed steps per run")
     p.add_argument("--warmup", type=int, default=16, help="untimed steps before each (config, N)")
@@ -169,9 +171,9 @@ def main():
     args = parse_args()
     RESULTS.mkdir(exist_ok=True)
     print(environment_line(), flush=True)
-    rows = sweep(args)
-    write_csv(rows, args)
-    plot(rows)
+    rows = sweep(args, configs(args.eval_every))
+    write_csv(rows, args, RESULTS / "steps_per_sec.csv")
+    plot(rows, RESULTS / "steps_per_sec.png", "Batched CartPole: numpy CPU vs MLX GPU, Apple M3 Pro")
     print()
     print(markdown_table(rows))
     print()
