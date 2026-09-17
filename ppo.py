@@ -198,14 +198,15 @@ def make_update(agent, optimizer, cfg):
     return update
 
 
-def evaluate(agent, n=2048, steps=500):
+def evaluate(actor, n=2048, steps=500):
     """Gym's solved criterion in parallel: mean steps survived by the greedy
-    policy over `steps` steps from reset, across n environments."""
+    policy over `steps` steps from reset, across n environments. `actor` maps
+    a (N, 4) observation batch to per-action scores; argmax picks the action."""
     state = cartpole_mlx.reset(n)
     alive = mx.ones((n,), dtype=mx.bool_)
     survived = mx.zeros((n,))
     for t in range(steps):
-        action = mx.argmax(agent.actor(state.T), axis=-1)
+        action = mx.argmax(actor(state.T), axis=-1)
         state, _, done = cartpole_mlx.step_compiled(state, action)
         alive = alive & ~done
         survived = survived + alive.astype(mx.float32)
@@ -238,7 +239,7 @@ def train(cfg, backend, seed, log=lambda *_: None):
         update(batch, rng)
         train_seconds += time.perf_counter() - start
         env_steps += cfg.n * cfg.steps
-        score = evaluate(agent)
+        score = evaluate(agent.actor)
         log(it, env_steps, train_seconds, score)
         if score >= cfg.solved_at:
             return Result(True, it, env_steps, train_seconds, score)

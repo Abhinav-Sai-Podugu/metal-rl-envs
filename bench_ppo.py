@@ -46,10 +46,10 @@ def _medians(rows, series_key, series, n, key):
     return statistics.median(solved) if solved else None
 
 
-def plot(rows, ns, series_key, series, path, title):
-    """Two panels, seconds and env steps to solve against N, one line per series (median over solved seeds) with per-seed dots."""
+def plot(rows, ns, series_key, series, path, title, steps=("env_steps", "environment steps to solve")):
+    """Two panels, seconds and a step count to solve against N, one line per series (median over solved seeds) with per-seed dots."""
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.5), facecolor="#fcfcfb")
-    panels = [("train_seconds", "seconds of training to solve"), ("env_steps", "environment steps to solve")]
+    panels = [("train_seconds", "seconds of training to solve"), steps]
     for ax, (key, ylabel) in zip(axes, panels):
         ax.set_facecolor("#fcfcfb")
         for name, color in zip(series, COLORS):
@@ -74,16 +74,16 @@ def plot(rows, ns, series_key, series, path, title):
     fig.savefig(path, dpi=150)
 
 
-def markdown_table(rows, ns, series_key, series, seeds, ratio=None):
+def markdown_table(rows, ns, series_key, series, seeds, ratio=None, steps=("env_steps", "steps to solve")):
     """Per series: median seconds and env steps to solve over solved seeds, and how many seeds solved.
     ratio=(label, a, b) appends a column with series a's seconds over series b's."""
-    head = "| N | " + " | ".join(f"{name}: s to solve | {name}: steps to solve | solved" for name in series)
+    head = "| N | " + " | ".join(f"{name}: s to solve | {name}: {steps[1]} | solved" for name in series)
     head += f" | {ratio[0]} |" if ratio else " |"
     lines = [head, "|--:|" + "--:|" * (3 * len(series) + (1 if ratio else 0))]
     for n in ns:
         cells, secs = [], {}
         for name in series:
-            s, st = _medians(rows, series_key, name, n, "train_seconds"), _medians(rows, series_key, name, n, "env_steps")
+            s, st = _medians(rows, series_key, name, n, "train_seconds"), _medians(rows, series_key, name, n, steps[0])
             k = sum(1 for r in rows if r[series_key] == name and r["n"] == n and r["solved"])
             secs[name] = s
             cells += [f"{s:.1f}" if s else "—", f"{st:,.0f}" if st else "—", f"{k}/{len(seeds)}"]
