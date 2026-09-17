@@ -1,0 +1,96 @@
+config,n,steps_per_sec,iters,warmup,repeats
+numpy,1,12091,256,16,3
+numpy,2,24138,256,16,3
+numpy,4,48087,256,16,3
+numpy,8,96685,256,16,3
+numpy,16,193358,256,16,3
+numpy,32,369649,256,16,3
+numpy,64,739243,256,16,3
+numpy,128,1410828,256,16,3
+numpy,256,2476354,256,16,3
+numpy,512,4170366,256,16,3
+numpy,1024,6748158,256,16,3
+numpy,2048,9683573,256,16,3
+numpy,4096,12259835,256,16,3
+numpy,8192,14147339,256,16,3
+numpy,16384,14363551,256,16,3
+numpy,32768,14575287,256,16,3
+numpy,65536,13731650,256,16,3
+numpy,131072,13386064,256,16,3
+numpy,262144,11017745,256,16,3
+"mlx compiled, eval every step",1,2672,256,16,3
+"mlx compiled, eval every step",2,5776,256,16,3
+"mlx compiled, eval every step",4,10754,256,16,3
+"mlx compiled, eval every step",8,23738,256,16,3
+"mlx compiled, eval every step",16,51521,256,16,3
+"mlx compiled, eval every step",32,92836,256,16,3
+"mlx compiled, eval every step",64,194696,256,16,3
+"mlx compiled, eval every step",128,370950,256,16,3
+"mlx compiled, eval every step",256,695635,256,16,3
+"mlx compiled, eval every step",512,1414530,256,16,3
+"mlx compiled, eval every step",1024,3002369,256,16,3
+"mlx compiled, eval every step",2048,5737061,256,16,3
+"mlx compiled, eval every step",4096,11038334,256,16,3
+"mlx compiled, eval every step",8192,23655992,256,16,3
+"mlx compiled, eval every step",16384,42070197,256,16,3
+"mlx compiled, eval every step",32768,78369275,256,16,3
+"mlx compiled, eval every step",65536,114124187,256,16,3
+"mlx compiled, eval every step",131072,138567930,256,16,3
+"mlx compiled, eval every step",262144,124226980,256,16,3
+"mlx compiled, eval every 32",1,4586,256,16,3
+"mlx compiled, eval every 32",2,9271,256,16,3
+"mlx compiled, eval every 32",4,18010,256,16,3
+"mlx compiled, eval every 32",8,33828,256,16,3
+"mlx compiled, eval every 32",16,42880,256,16,3
+"mlx compiled, eval every 32",32,142079,256,16,3
+"mlx compiled, eval every 32",64,291183,256,16,3
+"mlx compiled, eval every 32",128,580678,256,16,3
+"mlx compiled, eval every 32",256,1137766,256,16,3
+"mlx compiled, eval every 32",512,2251883,256,16,3
+"mlx compiled, eval every 32",1024,4578008,256,16,3
+"mlx compiled, eval every 32",2048,9221020,256,16,3
+"mlx compiled, eval every 32",4096,18131337,256,16,3
+"mlx compiled, eval every 32",8192,36739636,256,16,3
+"mlx compiled, eval every 32",16384,69376409,256,16,3
+"mlx compiled, eval every 32",32768,145325540,256,16,3
+"mlx compiled, eval every 32",65536,171921631,256,16,3
+"mlx compiled, eval every 32",131072,178035263,256,16,3
+"mlx compiled, eval every 32",262144,155354617,256,16,3
+"metal kernel, eval every step",1,5152,256,16,3
+"metal kernel, eval every step",2,10924,256,16,3
+"metal kernel, eval every step",4,21117,256,16,3
+"metal kernel, eval every step",8,41163,256,16,3
+"metal kernel, eval every step",16,81872,256,16,3
+"metal kernel, eval every step",32,166610,256,16,3
+"metal kernel, eval every step",64,326395,256,16,3
+"metal kernel, eval every step",128,653883,256,16,3
+"metal kernel, eval every step",256,1319346,256,16,3
+"metal kernel, eval every step",512,2616758,256,16,3
+"metal kernel, eval every step",1024,5353251,256,16,3
+"metal kernel, eval every step",2048,10452990,256,16,3
+"metal kernel, eval every step",4096,21453125,256,16,3
+"metal kernel, eval every step",8192,41235440,256,16,3
+"metal kernel, eval every step",16384,83624961,256,16,3
+"metal kernel, eval every step",32768,163679224,256,16,3
+"metal kernel, eval every step",65536,304011946,256,16,3
+"metal kernel, eval every step",131072,528293189,256,16,3
+"metal kernel, eval every step",262144,783596062,256,16,3
+"metal kernel, eval every 32",1,19826,256,16,3
+"metal kernel, eval every 32",2,42675,256,16,3
+"metal kernel, eval every 32",4,86662,256,16,3
+"metal kernel, eval every 32",8,158076,256,16,3
+"metal kernel, eval every 32",16,328891,256,16,3
+"metal kernel, eval every 32",32,682837,256,16,3
+"metal kernel, eval every 32",64,1380267,256,16,3
+"metal kernel, eval every 32",128,2763638,256,16,3
+"metal kernel, eval every 32",256,5604581,256,16,3
+"metal kernel, eval every 32",512,10921794,256,16,3
+"metal kernel, eval every 32",1024,21634175,256,16,3
+"metal kernel, eval every 32",2048,40694665,256,16,3
+"metal kernel, eval every 32",4096,71946348,256,16,3
+"metal kernel, eval every 32",8192,127707373,256,16,3
+"metal kernel, eval every 32",16384,211273340,256,16,3
+"metal kernel, eval every 32",32768,519945643,256,16,3
+"metal kernel, eval every 32",65536,941612312,256,16,3
+"metal kernel, eval every 32",131072,1237181816,256,16,3
+"metal kernel, eval every 32",262144,1122857104,256,16,3

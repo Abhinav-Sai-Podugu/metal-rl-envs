@@ -233,6 +233,102 @@ timed steps after 16 untimed. Full data in `results/kernel.csv`;
 - Everything else is v1's rule unchanged: same harness, same iteration
   counts, same eval-boundary sweep, the power source recorded.
 
+## v4: does a heavier body move the crossover?
+
+All the way to N = 1. On Acrobot, the hand-written kernel beats numpy at
+every N, including a single environment, and reaches **102x at N = 262,144**.
+
+![environment steps per second against N for Acrobot, numpy CPU vs compiled MLX vs Metal kernel](results/acrobot.png)
+
+Acrobot (Gym's classic-control version, book dynamics) is a two-link
+underactuated pendulum integrated with RK4: four derivative evaluations per
+step, about 230 flops and 18 transcendentals against CartPole's ~30 and 2.
+Same three implementations, same harness, same tests against a scalar
+transcription of Gym's step. The sweep stops at N = 262,144 because numpy
+takes minutes per point beyond that and the GPU ceiling is reached by 131K.
+
+| | CartPole | Acrobot |
+|---|--:|--:|
+| Arithmetic per step, approx. | 30 flops, 2 transcendentals | 230 flops, 18 transcendentals |
+| numpy at N = 1 | 20 µs / step | 83 µs / step |
+| Metal kernel, eval every 32, at N = 1 | 59 µs / step | 50 µs / step |
+| compiled MLX, eval every 32, at N = 1 | 101 µs / step | 218 µs / step |
+| First N where the kernel (eval every 32) beats numpy | 2,048 | **1** |
+| First N where the kernel (eval every step) beats numpy | 8,192 | 2,048 |
+| First N where compiled MLX (eval every 32) beats numpy | 4,096 | 4,096 |
+| First N where compiled MLX (eval every step) beats numpy | 16,384 | 8,192 |
+| numpy peak | 36M steps/s | 14.6M steps/s |
+| compiled MLX peak | 597M steps/s | 178M steps/s |
+| Metal kernel peak | 1.13B steps/s | 1.24B steps/s |
+| Best GPU / numpy at N = 262,144 | 39x | 102x |
+
+CartPole column from the v3 sweep (`results/kernel.csv`), same harness.
+
+- **The kernel's cost per step did not change; the CPU's did.** At N = 1 the
+  kernel spends the same ~50 µs per step on either body, all of it launch
+  and sync overhead, while numpy went from 20 µs to 83 µs: four derivative
+  evaluations mean four times the numpy calls, and the per-call overhead is
+  the cost at small N. At large N the kernel's ceiling is the same ~1.2
+  billion steps per second on both bodies, so it is bound by memory traffic
+  and scheduling, not arithmetic, and eight times the flops were free.
+  numpy's ceiling fell 2.5x.
+- **`mx.compile` did not move its crossover.** Still N = 4,096 with the lazy
+  chain. Its per-step overhead doubled with the graph, because Python still
+  builds ~150 nodes per step before compile sees them, and its ceiling fell
+  3.4x, because RK4's four derivative stages with a stack between each do
+  not fuse into few kernels. On the heavy body the hand-written kernel is
+  7x faster than compile at N = 131K, against 1.9x on CartPole.
+- **Body complexity is the lever the v1 handoff predicted.** "Metal dispatch
+  overhead dominates for small-body environments; body complexity must
+  exceed X before the GPU pays." X is somewhere between CartPole and Acrobot
+  for a one-launch step, and the GPU pays at every N past it.
+- One wobble: the compiled lazy line dips at N = 16 (43K, below its
+  eval-every-step sibling). Median of 3 did not smooth it. Not investigated.
+
+### Table
+
+Same machine and conditions, same parameters: median of 3 runs of 256 timed
+steps after 16 untimed, random actions over three torques sampled on the
+same device inside the timed loop. Full data in `results/acrobot.csv`;
+`uv run bench_acrobot.py --max-exp 18` regenerates it in a few minutes.
+
+| N | numpy | mlx compiled, eval every step | mlx compiled, eval every 32 | metal kernel, eval every step | metal kernel, eval every 32 | best GPU / numpy |
+|--:|--:|--:|--:|--:|--:|--:|
+| 1 | 12,091 | 2,672 | 4,586 | 5,152 | 19,826 | 1.64x |
+| 2 | 24,138 | 5,776 | 9,271 | 10,924 | 42,675 | 1.77x |
+| 4 | 48,087 | 10,754 | 18,010 | 21,117 | 86,662 | 1.80x |
+| 8 | 96,685 | 23,738 | 33,828 | 41,163 | 158,076 | 1.63x |
+| 16 | 193,358 | 51,521 | 42,880 | 81,872 | 328,891 | 1.70x |
+| 32 | 369,649 | 92,836 | 142,079 | 166,610 | 682,837 | 1.85x |
+| 64 | 739,243 | 194,696 | 291,183 | 326,395 | 1,380,267 | 1.87x |
+| 128 | 1,410,828 | 370,950 | 580,678 | 653,883 | 2,763,638 | 1.96x |
+| 256 | 2,476,354 | 695,635 | 1,137,766 | 1,319,346 | 5,604,581 | 2.26x |
+| 512 | 4,170,366 | 1,414,530 | 2,251,883 | 2,616,758 | 10,921,794 | 2.62x |
+| 1,024 | 6,748,158 | 3,002,369 | 4,578,008 | 5,353,251 | 21,634,175 | 3.21x |
+| 2,048 | 9,683,573 | 5,737,061 | 9,221,020 | 10,452,990 | 40,694,665 | 4.20x |
+| 4,096 | 12,259,835 | 11,038,334 | 18,131,337 | 21,453,125 | 71,946,348 | 5.87x |
+| 8,192 | 14,147,339 | 23,655,992 | 36,739,636 | 41,235,440 | 127,707,373 | 9.03x |
+| 16,384 | 14,363,551 | 42,070,197 | 69,376,409 | 83,624,961 | 211,273,340 | 14.71x |
+| 32,768 | 14,575,287 | 78,369,275 | 145,325,540 | 163,679,224 | 519,945,643 | 35.67x |
+| 65,536 | 13,731,650 | 114,124,187 | 171,921,631 | 304,011,946 | 941,612,312 | 68.57x |
+| 131,072 | 13,386,064 | 138,567,930 | 178,035,263 | 528,293,189 | 1,237,181,816 | 92.42x |
+| 262,144 | 11,017,745 | 124,226,980 | 155,354,617 | 783,596,062 | 1,122,857,104 | 101.91x |
+
+### v4 methodology
+
+- **Same rule as v1**, with the sweep stopping at 2^18 for the reason above.
+- **Same tests as CartPole:** every implementation agrees with a scalar
+  transcription of Gym's `AcrobotEnv.step`, including its RK4 on the
+  torque-augmented state and its while-loop angle wrap, at 1e-3, the RK4
+  step at dt = 0.2 amplifying float32 rounding. Angle wrap is branch-free
+  (`x - 2π·floor((x + π) / 2π)`), which differs from Gym only at the exact
+  boundary.
+- **Acrobot almost never terminates under random actions**, so the masked
+  reset is paid every step and almost never used, on every backend. Reward
+  is Gym's: -1 per step, 0 on termination.
+- The flop counts are hand counts of the Python source with constant folding
+  and are approximate.
+
 ## v1 methodology
 
 Fixed before any number existed, so the benchmark could not be tuned toward a
@@ -276,10 +372,11 @@ flattering result.
 
 ```
 uv sync
-uv run python test_cartpole.py && uv run python test_ppo.py
+uv run python test_cartpole.py && uv run python test_acrobot.py && uv run python test_ppo.py
 uv run bench.py        # v1: environment throughput sweep, ~3 min
 uv run bench_ppo.py    # v2: PPO wall-clock to solve sweep, ~6 min
 uv run bench_kernel.py # v3: Metal kernel vs compiled step, ~3 min
+uv run bench_acrobot.py --max-exp 18  # v4: the heavier body, ~4 min
 uv run ppo.py --n 256  # one PPO run with a per-iteration log
 ```
 
@@ -299,6 +396,9 @@ uv run ppo.py --n 256  # one PPO run with a per-iteration log
   device. Read after the two environment files.
 - `bench_ppo.py`: the v2 sweep, plot and table.
 - `bench_kernel.py`: the v3 sweep, reusing the v1 harness.
+- `acrobot_np.py`, `acrobot_mlx.py`, `acrobot_metal.py`, `test_acrobot.py`,
+  `bench_acrobot.py`: v4, the same three implementations, tests and sweep
+  for the heavier body.
 - `test_ppo.py`: GAE against a scalar reference, log-prob and entropy against
   numpy, and one short end-to-end learning check.
 - `results/`: CSVs and plots from the runs above, and the first v1 sweep with
@@ -308,6 +408,8 @@ uv run ppo.py --n 256  # one PPO run with a per-iteration log
 
 v1: one environment, two implementations, one throughput sweep. v2: PPO on
 it, environment on either device, wall-clock to solve. v3: the step as one
-hand-written Metal kernel against the compiled step. Each shipped complete.
-Not here: other environments, per-N learning-rate scaling, the kernel inside
-PPO (v2 showed the environment is not where PPO's time goes).
+hand-written Metal kernel against the compiled step. v4: the same three
+implementations on a body with eight times the arithmetic. Each shipped
+complete. Not here: per-N learning-rate scaling, the kernel inside PPO (v2
+showed the environment is not where PPO's time goes), bodies heavier than
+Acrobot.

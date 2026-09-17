@@ -3,15 +3,18 @@
 Abhinav is starting this project here. This file is the handoff; he takes the
 session from this point. Read it, then work with him directly.
 
-## Status (2026-09-16)
+## Status (2026-09-17)
 
-v1, v2 and v3 are shipped and public. v1: batched CartPole, numpy vs MLX,
-the GPU wins above N ≈ 4K and peaks at 19x. v2: PPO on it; the environment
-is not the bottleneck at any N, the update is, and fixed hyperparameters
-make larger N slower. v3: the step as one hand-written Metal kernel beats
-mx.compile 1.7x to 2.9x at every N and reaches 1.25B steps/s at N = 1M, 50x
-numpy. Findings, tables and methodology are in README.md. Open candidates:
-a heavier environment, learning-rate scaling with N. Nothing is started.
+v1 to v4 are shipped and public. v1: batched CartPole, numpy vs MLX, the GPU
+wins above N ≈ 4K and peaks at 19x. v2: PPO on it; the environment is not
+the bottleneck at any N, the update is, and fixed hyperparameters make
+larger N slower. v3: the step as one hand-written Metal kernel beats
+mx.compile 1.7x to 2.9x at every N, 1.25B steps/s at N = 1M, 50x numpy.
+v4: on Acrobot (8x the arithmetic) the kernel beats numpy at N = 1, the
+crossover is gone, 102x at N = 262K; the GPU step's cost did not change
+with body complexity, the CPU's did. Findings, tables and methodology are
+in README.md. Open candidates: learning-rate scaling with N in PPO, a body
+heavier than Acrobot. Nothing is started.
 
 ## What this is
 
