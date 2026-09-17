@@ -5,6 +5,10 @@ survived. Nothing touches memory between steps: the step-by-step version
 reads each member's ~900 bytes of weights and writes its state on every
 step, which is where v7's first attempt spent thirty times the physics.
 
+Each thread copies its member's weights into thread-private memory once:
+read from the device row on every step, they bound the kernel at large
+populations (2.2x at 65,536 members on CartPole, 4x on Acrobot).
+
 Parameters arrive as one (P, D) row per member in the layout of
 es.unflatten: w1 (4, H) row-major, then b1 (H), then w2 (H, 2) row-major,
 then b2 (2). Hidden width and horizon are template constants so the inner
@@ -43,7 +47,9 @@ _SOURCE = """
     uint i = thread_position_in_grid.x;
     uint n = state_shape[1];
     if (i >= n) return;
-    const device float* w = theta + i * (7 * H + 2);
+    const device float* row = theta + i * (7 * H + 2);
+    float w[7 * H + 2];
+    for (uint d = 0; d < 7 * H + 2; d++) w[d] = row[d];
     float x = state[i], x_dot = state[n + i], th = state[2 * n + i], th_dot = state[3 * n + i];
     float survived = 0.0f;
     for (uint t = 0; t < HORIZON; t++) {

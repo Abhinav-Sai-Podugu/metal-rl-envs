@@ -4,6 +4,9 @@ horizon in registers and writes back one number, the steps taken before the
 tip first cleared height 1 (the horizon if it never did). The policy sees
 Gym's observation, cos and sin of both angles plus the two velocities.
 
+Each thread copies its member's weights into thread-private memory once;
+read from the device row on every step they cost 4x at 65,536 members.
+
 Parameters arrive as one (P, D) row per member in the layout of
 es.unflatten: w1 (6, H) row-major, b1 (H), w2 (H, 3) row-major, b2 (3).
 The physics helpers are the ones cartpole_metal's sibling acrobot_metal
@@ -19,7 +22,9 @@ _SOURCE = """
     uint i = thread_position_in_grid.x;
     uint n = state_shape[1];
     if (i >= n) return;
-    const device float* w = theta + i * (10 * H + 3);
+    const device float* row = theta + i * (10 * H + 3);
+    float w[10 * H + 3];
+    for (uint d = 0; d < 10 * H + 3; d++) w[d] = row[d];
     float th1 = state[i], th2 = state[n + i], dth1 = state[2 * n + i], dth2 = state[3 * n + i];
     float steps = 0.0f;
     for (uint t = 0; t < HORIZON; t++) {
