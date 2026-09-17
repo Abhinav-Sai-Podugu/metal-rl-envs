@@ -34,29 +34,30 @@ def sweep(args):
     return rows
 
 
-def write_csv(rows):
-    with open(RESULTS / "ppo.csv", "w", newline="") as f:
+def write_csv(rows, path):
+    with open(path, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0]))
         w.writeheader()
         w.writerows(rows)
 
 
-def _medians(rows, backend, n, key):
-    solved = [r[key] for r in rows if r["backend"] == backend and r["n"] == n and r["solved"]]
+def _medians(rows, series_key, series, n, key):
+    solved = [r[key] for r in rows if r[series_key] == series and r["n"] == n and r["solved"]]
     return statistics.median(solved) if solved else None
 
 
-def plot(rows, args):
+def plot(rows, ns, series_key, series, path, title):
+    """Two panels, seconds and env steps to solve against N, one line per series (median over solved seeds) with per-seed dots."""
     fig, axes = plt.subplots(1, 2, figsize=(11, 4.5), facecolor="#fcfcfb")
     panels = [("train_seconds", "seconds of training to solve"), ("env_steps", "environment steps to solve")]
     for ax, (key, ylabel) in zip(axes, panels):
         ax.set_facecolor("#fcfcfb")
-        for backend, color in zip(args.backends, COLORS):
-            pts = [(n, _medians(rows, backend, n, key)) for n in args.ns]
+        for name, color in zip(series, COLORS):
+            pts = [(n, _medians(rows, series_key, name, n, key)) for n in ns]
             pts = [(n, v) for n, v in pts if v is not None]
             if pts:
-                ax.plot(*zip(*pts), color=color, linewidth=2, marker="o", markersize=5, label=f"{backend} env")
-            seeds = [(r["n"], r[key]) for r in rows if r["backend"] == backend and r["solved"]]
+                ax.plot(*zip(*pts), color=color, linewidth=2, marker="o", markersize=5, label=name)
+            seeds = [(r["n"], r[key]) for r in rows if r[series_key] == name and r["solved"]]
             if seeds:
                 ax.scatter(*zip(*seeds), color=color, s=10, alpha=0.4)
         ax.set_xscale("log", base=2)
@@ -68,23 +69,31 @@ def plot(rows, args):
         for side in ("top", "right"):
             ax.spines[side].set_visible(False)
         ax.legend(frameon=False, fontsize=9)
-    fig.suptitle("PPO on batched CartPole, policy on the GPU, environment on GPU vs CPU. Apple M3 Pro", color="#0b0b0b")
+    fig.suptitle(title, color="#0b0b0b")
     fig.tight_layout()
-    fig.savefig(RESULTS / "ppo.png", dpi=150)
+    fig.savefig(path, dpi=150)
 
 
-def markdown_table(rows, args):
-    head = "| N | " + " | ".join(f"{b} env: s to solve | {b} env: steps to solve | solved" for b in args.backends) + " | CPU s / GPU s |"
-    lines = [head, "|--:|" + "--:|" * (3 * len(args.backends) + 1)]
-    for n in args.ns:
+def markdown_table(rows, ns, series_key, series, seeds, ratio=None):
+    """Per series: median seconds and env steps to solve over solved seeds, and how many seeds solved.
+    ratio=(label, a, b) appends a column with series a's seconds over series b's."""
+    head = "| N | " + " | ".join(f"{name}: s to solve | {name}: steps to solve | solved" for name in series)
+    head += f" | {ratio[0]} |" if ratio else " |"
+    lines = [head, "|--:|" + "--:|" * (3 * len(series) + (1 if ratio else 0))]
+    for n in ns:
         cells, secs = [], {}
-        for b in args.backends:
-            s, st = _medians(rows, b, n, "train_seconds"), _medians(rows, b, n, "env_steps")
-            k = sum(1 for r in rows if r["backend"] == b and r["n"] == n and r["solved"])
-            secs[b] = s
-            cells += [f"{s:.1f}" if s else "—", f"{st:,.0f}" if st else "—", f"{k}/{len(args.seeds)}"]
-        ratio = f"{secs['numpy'] / secs['mlx']:.2f}x" if secs.get("numpy") and secs.get("mlx") else "—"
-        lines.append(f"| {n:,} | " + " | ".join(cells) + f" | {ratio} |")
+        for name in series:
+            s, st = _medians(rows, series_key, name, n, "train_seconds"), _medians(rows, series_key, name, n, "env_steps")
+            k = sum(1 for r in rows if r[series_key] == name and r["n"] == n and r["solved"])
+            secs[name] = s
+            cells += [f"{s:.1f}" if s else "—", f"{st:,.0f}" if st else "—", f"{k}/{len(seeds)}"]
+        line = f"| {n:,} | " + " | ".join(cells)
+        if ratio:
+            _, a, b = ratio
+            line += f" | {secs[a] / secs[b]:.2f}x |" if secs.get(a) and secs.get(b) else " | — |"
+        else:
+            line += " |"
+        lines.append(line)
     return "\n".join(lines)
 
 
@@ -102,10 +111,14 @@ def main():
     RESULTS.mkdir(exist_ok=True)
     print(environment_line(), flush=True)
     rows = sweep(args)
-    write_csv(rows)
-    plot(rows, args)
+    write_csv(rows, RESULTS / "ppo.csv")
+    series = [f"{b} env" for b in args.backends]
+    for r in rows:
+        r["series"] = f"{r['backend']} env"
+    plot(rows, args.ns, "series", series, RESULTS / "ppo.png",
+         "PPO on batched CartPole, policy on the GPU, environment on GPU vs CPU. Apple M3 Pro")
     print()
-    print(markdown_table(rows, args))
+    print(markdown_table(rows, args.ns, "series", series, args.seeds, ("CPU s / GPU s", "numpy env", "mlx env")))
     print()
     cfg = ppo.Config()
     print(f"steps/window={cfg.steps} epochs={cfg.epochs} minibatches={cfg.minibatches} lr={cfg.lr} "
