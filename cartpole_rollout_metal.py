@@ -79,7 +79,7 @@ _kernel = mx.fast.metal_kernel(
 )
 
 
-def rollout_fitness(state, theta_pop, hidden, horizon):
+def rollout_steps(state, theta_pop, hidden, horizon):
     """Steps survived by each of P members from `state` (4, P), each running
     its own policy from row of `theta_pop` (P, 7*hidden+2), lazily."""
     n = state.shape[1]

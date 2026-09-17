@@ -1,4 +1,4 @@
-"""v7: Evolution Strategies, the learner whose inner loop is the environment, swept over population size.
+"""v7/v8: Evolution Strategies, the learner whose inner loop is the environment, swept over population size.
 
 Three backends: numpy (all CPU), mlx (MLX ops plus the v3 step kernel), and
 metal (the whole rollout as one kernel launch). Population size is the
@@ -22,7 +22,7 @@ def sweep(args):
         for lr in args.lrs:
             for pop in args.ns:
                 for seed in args.seeds:
-                    cfg = es.Config(pop=pop, lr=lr, time_budget=args.time_budget)
+                    cfg = es.Config(task=args.task, pop=pop, lr=lr, time_budget=args.time_budget)
                     r = es.train(cfg, backend, seed)
                     series = backend if args.series == "backend" else f"lr {lr}"
                     rows.append({"backend": backend, "lr": lr, "series": series, "n": pop, "seed": seed, **vars(r),
@@ -46,18 +46,21 @@ def throughput_table(rows, ns, series):
 
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--task", choices=list(es.TASKS), default="cartpole")
     p.add_argument("--ns", type=int, nargs="+", default=[64, 256, 1024, 4096, 16384, 65536], help="population sizes")
     p.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2, 3, 4])
     p.add_argument("--backends", nargs="+", default=list(es.BACKENDS), choices=list(es.BACKENDS))
     p.add_argument("--lrs", type=float, nargs="+", default=[0.1])
     p.add_argument("--series", choices=["backend", "lr"], default="backend")
     p.add_argument("--time-budget", type=float, default=300.0)
-    p.add_argument("--out", default="es")
+    p.add_argument("--out", default=None, help="results file stem; default es or es_<task>")
     return p.parse_args()
 
 
 def main():
     args = parse_args()
+    if args.out is None:
+        args.out = "es" if args.task == "cartpole" else f"es_{args.task}"
     RESULTS.mkdir(exist_ok=True)
     print(environment_line(), flush=True)
     rows = sweep(args)
@@ -65,14 +68,14 @@ def main():
     steps = ("generations", "generations to solve")
     bench_ppo.write_csv(rows, RESULTS / f"{args.out}.csv")
     bench_ppo.plot(rows, args.ns, "series", series, RESULTS / f"{args.out}.png",
-                   "Evolution Strategies on batched CartPole, population = environments. Apple M3 Pro", steps=steps)
+                   f"Evolution Strategies on batched {args.task.capitalize()}, population = environments. Apple M3 Pro", steps=steps)
     print()
     print(bench_ppo.markdown_table(rows, args.ns, "series", series, args.seeds, steps=steps))
     print()
     print(throughput_table(rows, args.ns, series))
     print()
     cfg = es.Config()
-    print(f"hidden={cfg.hidden} sigma={cfg.sigma} lrs={args.lrs} horizon={cfg.horizon} time_budget={args.time_budget}s seeds={args.seeds}")
+    print(f"task={args.task} hidden={cfg.hidden} sigma={cfg.sigma} lrs={args.lrs} horizon={cfg.horizon} time_budget={args.time_budget}s seeds={args.seeds}")
 
 
 if __name__ == "__main__":
