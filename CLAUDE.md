@@ -5,19 +5,19 @@ session from this point. Read it, then work with him directly.
 
 ## Status (2026-09-17)
 
-v1 to v7 are shipped and public. v1: batched CartPole, numpy vs MLX, GPU
+v1 to v8 are shipped and public. v1: batched CartPole, numpy vs MLX, GPU
 wins above N ≈ 4K, peaks at 19x. v2: PPO; the update, not the environment,
 is the bottleneck. v3: one hand-written Metal kernel beats mx.compile 1.7x
 to 2.9x, 1.25B steps/s at N = 1M. v4: on Acrobot the kernel beats numpy at
 N = 1, 102x at N = 262K. v5: no hyperparameter rule makes large N pay in
-PPO; ~10 iterations regardless. v6: DQN uses fresh data to N ≈ 256, best
-solve 7.8 s, learner read rate is the ceiling. v7: Evolution Strategies
-with the whole rollout as one kernel launch solves CartPole in ~20 ms,
-five times PPO's best, consumes 200M useful env steps/s (1.2B nominal),
-11x to 30x the same algorithm in MLX ops and up to 336x the CPU; population
-size and step size buy nothing past a few thousand members. Findings,
-tables and methodology are in README.md. The project's question is
-answered end to end; this is the stopping point.
+PPO. v6: DQN uses fresh data to N ≈ 256; learner read rate is the ceiling.
+v7: Evolution Strategies with the whole rollout as one kernel launch solves
+CartPole in ~20 ms, 15x to 28x the same algorithm in MLX ops. v8: the same
+on Acrobot in 11 to 20 ms, 8 ms with step 0.3, the project's best; per-step
+weight reads were the kernel's bottleneck at large populations, fixed by a
+thread-private copy (2.2x to 4x at 65,536 members). Population size never
+bought fewer generations on either body. Findings, tables and methodology
+are in README.md. This is the stopping point.
 
 ## What this is
 
