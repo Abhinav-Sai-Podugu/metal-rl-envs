@@ -5,19 +5,20 @@ session from this point. Read it, then work with him directly.
 
 ## Status (2026-09-17)
 
-v1 to v5 are shipped and public. v1: batched CartPole, numpy vs MLX, the GPU
+v1 to v6 are shipped and public. v1: batched CartPole, numpy vs MLX, the GPU
 wins above N ≈ 4K and peaks at 19x. v2: PPO on it; the environment is not
-the bottleneck at any N, the update is, and fixed hyperparameters make
-larger N slower. v3: the step as one hand-written Metal kernel beats
-mx.compile 1.7x to 2.9x at every N, 1.25B steps/s at N = 1M, 50x numpy.
-v4: on Acrobot (8x the arithmetic) the kernel beats numpy at N = 1, the
-crossover is gone, 102x at N = 262K. v5: no hyperparameter rule (sqrt or
-linear lr scaling, fixed minibatch) makes large N pay in PPO; iterations to
-solve is ~10 regardless of N, lr, gradient steps, clip or window length;
-the remaining explanation is on-policy data collection, untested. Findings,
-tables and methodology are in README.md. Open candidate: an off-policy
-method that could actually use the environment throughput. Nothing is
-started. A legitimate stopping point.
+the bottleneck at any N, the update is. v3: one hand-written Metal kernel
+beats mx.compile 1.7x to 2.9x, 1.25B steps/s at N = 1M, 50x numpy. v4: on
+Acrobot (8x the arithmetic) the kernel beats numpy at N = 1, crossover
+gone, 102x at N = 262K. v5: no hyperparameter rule makes large N pay in
+PPO; iterations to solve ≈ 10 regardless of everything tried. v6: DQN uses
+fresh data up to N ≈ 256 (2.4x faster than N = 1), the GPU environment is
+worth 1.3x to 1.75x in training wall-clock for the first time, batch 1,024
+gives the project's best solve at 7.8 s, and the learner's read rate (at
+most 5.9M samples/s vs 1.2B produced) is the ceiling. Findings, tables and
+methodology are in README.md. The only remaining customer for the
+environment's throughput is a gradient-free population method; that is a
+different project. This is the stopping point.
 
 ## What this is
 

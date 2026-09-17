@@ -432,6 +432,92 @@ Diagnostic arms:
   baseline per iteration, because a 2,048-sample step is mostly launch
   overhead.
 
+## v6: does an off-policy learner use the environment?
+
+Partly. DQN uses the fresh data up to N ≈ 256, the GPU environment finally
+shows up in training wall-clock, and then the learner's read rate becomes
+the ceiling, two hundred times below what the environment can produce.
+
+![DQN seconds and gradient steps to solve against N, environment on GPU vs CPU](results/dqn.png)
+
+DQN with CleanRL's CartPole hyperparameters, a 100K-transition replay buffer
+as five GPU arrays, and a compiled train step. Each iteration is one batched
+environment step, N transitions into the buffer, and one gradient step on a
+128-sample batch. Epsilon decay, learning start and target sync are
+scheduled in gradient steps and buffer fill, so the learner sees the same
+schedule at every N. Five seeds, both environment backends.
+
+- **Fresh data pays, up to N ≈ 256.** Gradient steps to solve fall from
+  41,000 at N = 1 to 20,000 at N = 256, then plateau: 19,500 at 4,096,
+  20,000 at 65,536. The learner reads 128 transitions per step; past
+  N ≈ 256 the extra transitions are never sampled. This is the shape v5
+  could not produce. Off-policy learning converts more data into fewer
+  steps, until the learner is reading as fast as it can.
+- **Wall-clock bottoms at N = 256, 2.4x faster than one environment**, 9.7 s
+  against 23.7 s. Past the plateau every environment is cost again:
+  N = 65,536 takes 59 s, because the iteration is six times more expensive
+  (65,536 rows scattered into the buffer, a Q forward pass on all of them)
+  and buys nothing.
+- **The environment's location matters for the first time**: the CPU
+  environment costs 1.3x to 1.75x at every N, outside seed spread. One
+  gradient step per environment step is a far higher environment-to-learner
+  ratio than PPO's sixteen per thirty-two. At N = 256 the numpy step and its
+  host sync add 0.24 ms to a 0.49 ms iteration.
+- **Reading more per step helps, up to 1,024.** A second sweep on the GPU
+  environment with batch sizes 128, 1,024 and 8,192 (`results/dqn_batch.csv`):
+
+| N | batch 128: s to solve | batch 128: gradient steps to solve | solved | batch 1024: s to solve | batch 1024: gradient steps to solve | solved | batch 8192: s to solve | batch 8192: gradient steps to solve | solved |
+|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| 256 | 9.7 | 20,000 | 5/5 | 7.8 | 13,500 | 5/5 | 20.2 | 14,500 | 5/5 |
+| 4,096 | 11.1 | 19,500 | 5/5 | 11.6 | 16,500 | 5/5 | 15.6 | 10,500 | 5/5 |
+
+  Batch 1,024 cuts gradient steps by a third at almost no cost per iteration
+  and sets the project's best training time, **7.8 s at N = 256, three times
+  faster than a single environment**. Batch 8,192 needs fewer steps still but
+  triples the cost of each, and at N = 256 it is resampling a buffer that
+  turns over slowly, with the widest seed spread in the sweep.
+- **The ceiling is the learner's read rate.** Samples read per second: 260K
+  at batch 128, 1.8M at 1,024, 5.9M at 8,192. The environment produces 1.2
+  billion. At its best DQN reads half a percent of what the environment can
+  make, and past batch 1,024 the extra reads stop paying. The remaining
+  throughput has one kind of customer: a learner with no gradient step,
+  where every environment runs its own policy and the environment is the
+  inner loop. That is a different project.
+
+### Table
+
+Same machine and conditions. Seconds are training time, median over solved
+seeds. `uv run bench_dqn.py` regenerates the main sweep in about twenty
+minutes; the batch sweep is
+`uv run bench_dqn.py --backends mlx --batches 128 1024 8192 --ns 256 4096 --series batch --out dqn_batch`.
+
+| N | mlx env: s to solve | mlx env: gradient steps to solve | solved | numpy env: s to solve | numpy env: gradient steps to solve | solved | CPU s / GPU s |
+|--:|--:|--:|--:|--:|--:|--:|--:|
+| 1 | 23.7 | 41,000 | 5/5 | 35.3 | 42,500 | 5/5 | 1.49x |
+| 16 | 19.4 | 38,500 | 5/5 | 25.5 | 35,000 | 5/5 | 1.31x |
+| 256 | 9.7 | 20,000 | 5/5 | 15.7 | 21,500 | 5/5 | 1.61x |
+| 4,096 | 12.3 | 19,500 | 5/5 | 16.9 | 18,000 | 5/5 | 1.37x |
+| 65,536 | 58.8 | 20,000 | 5/5 | 102.9 | 19,000 | 5/5 | 1.75x |
+
+### v6 methodology
+
+- **Same clock and solved criterion as v2 and v5.** The evaluation rollout
+  runs every 500 gradient steps and is outside the clock, so solve times
+  have a resolution of about a quarter second.
+- **Three CleanRL settings are re-expressed** so the schedule is identical
+  at every N: epsilon decays over 25,000 gradient steps (CleanRL's 250K env
+  steps at one gradient step per ten), the target network syncs every 50
+  gradient steps (500 per 10), learning starts at 10,000 buffered
+  transitions. The buffer is 100K for every N; CleanRL's 10K would hold less
+  than one iteration at N = 65,536. At N = 65,536 the buffer holds 1.5
+  iterations, so the learner is nearly on-policy there.
+- **The compiled train step threads the online network, the target network
+  and the optimizer state as inputs.** The target network changes every 50
+  steps; a captured array is a constant to compile. Fourth appearance of
+  v1's trap.
+- The Q-network is CleanRL's 120-84 ReLU MLP. Every rule is a configuration
+  of `dqn.py`; no training code differs between arms.
+
 ## v1 methodology
 
 Fixed before any number existed, so the benchmark could not be tuned toward a
@@ -475,12 +561,13 @@ flattering result.
 
 ```
 uv sync
-uv run python test_cartpole.py && uv run python test_acrobot.py && uv run python test_ppo.py
+uv run python test_cartpole.py && uv run python test_acrobot.py && uv run python test_ppo.py && uv run python test_dqn.py
 uv run bench.py        # v1: environment throughput sweep, ~3 min
 uv run bench_ppo.py    # v2: PPO wall-clock to solve sweep, ~6 min
 uv run bench_kernel.py # v3: Metal kernel vs compiled step, ~3 min
 uv run bench_acrobot.py --max-exp 18  # v4: the heavier body, ~4 min
 uv run bench_lr.py     # v5: hyperparameter rules against N in PPO, ~40 min
+uv run bench_dqn.py    # v6: DQN, environment on GPU vs CPU, ~20 min
 uv run ppo.py --n 256  # one PPO run with a per-iteration log
 ```
 
@@ -505,6 +592,8 @@ uv run ppo.py --n 256  # one PPO run with a per-iteration log
   for the heavier body.
 - `bench_lr.py`: v5, hyperparameter rules against N, plus the two
   diagnostic arms, all as configurations of `ppo.py`.
+- `dqn.py`, `test_dqn.py`, `bench_dqn.py`: v6, DQN with the replay buffer
+  on the GPU, its tests, and the sweep with a batch-size axis.
 - `test_ppo.py`: GAE against a scalar reference, log-prob and entropy against
   numpy, and one short end-to-end learning check.
 - `results/`: CSVs and plots from the runs above, and the first v1 sweep with
@@ -517,6 +606,8 @@ it, environment on either device, wall-clock to solve. v3: the step as one
 hand-written Metal kernel against the compiled step. v4: the same three
 implementations on a body with eight times the arithmetic. v5: the standard
 hyperparameter rules against N in PPO, and two diagnostics for why none of
-them work. Each shipped complete. Not here: the kernel inside PPO (v2 showed
-the environment is not where PPO's time goes), bodies heavier than Acrobot,
-off-policy methods that could reuse what the environment can now produce.
+them work. v6: DQN, the off-policy learner, with a batch-size diagnostic.
+Each shipped complete. Not here: the kernel inside a learner (no learner
+here reads fast enough for it to matter), bodies heavier than Acrobot,
+gradient-free population methods, the one kind of learner that could
+consume a billion steps per second.

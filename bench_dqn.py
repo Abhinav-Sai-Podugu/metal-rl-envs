@@ -20,14 +20,16 @@ from bench import RESULTS, environment_line
 def sweep(args):
     rows = []
     for backend in args.backends:
-        for n in args.ns:
-            for seed in args.seeds:
-                cfg = dqn.Config(n=n, grad_steps=args.grad_steps, time_budget=args.time_budget)
-                r = dqn.train(cfg, backend, seed)
-                rows.append({"backend": backend, "series": f"{backend} env", "n": n, "seed": seed, **vars(r)})
-                status = f"solved in {r.train_seconds:6.1f}s" if r.solved else f"NOT solved, {r.train_seconds:6.1f}s"
-                print(f"{backend:5s} N={n:>6d} seed={seed}  {status}  {r.grad_steps:>7,} grad steps  "
-                      f"{r.env_steps:>13,} env steps  score {r.score:5.1f}", flush=True)
+        for batch in args.batches:
+            for n in args.ns:
+                for seed in args.seeds:
+                    cfg = dqn.Config(n=n, batch=batch, grad_steps=args.grad_steps, time_budget=args.time_budget)
+                    r = dqn.train(cfg, backend, seed)
+                    series = f"{backend} env" if args.series == "backend" else f"batch {batch}"
+                    rows.append({"backend": backend, "batch": batch, "series": series, "n": n, "seed": seed, **vars(r)})
+                    status = f"solved in {r.train_seconds:6.1f}s" if r.solved else f"NOT solved, {r.train_seconds:6.1f}s"
+                    print(f"{backend:5s} batch={batch:<5d} N={n:>6d} seed={seed}  {status}  {r.grad_steps:>7,} grad steps  "
+                          f"{r.env_steps:>13,} env steps  score {r.score:5.1f}", flush=True)
     return rows
 
 
@@ -37,6 +39,8 @@ def parse_args():
     p.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2, 3, 4])
     p.add_argument("--backends", nargs="+", default=["mlx", "numpy"], choices=list(dqn.ENVS))
     p.add_argument("--grad-steps", type=int, default=1, help="gradient steps per iteration")
+    p.add_argument("--batches", type=int, nargs="+", default=[128], help="samples per gradient step")
+    p.add_argument("--series", choices=["backend", "batch"], default="backend", help="which axis labels the lines")
     p.add_argument("--time-budget", type=float, default=120.0)
     p.add_argument("--out", default="dqn", help="results file stem")
     return p.parse_args()
@@ -47,16 +51,17 @@ def main():
     RESULTS.mkdir(exist_ok=True)
     print(environment_line(), flush=True)
     rows = sweep(args)
-    series = [f"{b} env" for b in args.backends]
+    series = [f"{b} env" for b in args.backends] if args.series == "backend" else [f"batch {b}" for b in args.batches]
+    ratio = ("CPU s / GPU s", "numpy env", "mlx env") if args.series == "backend" else None
     steps = ("grad_steps", "gradient steps to solve")
     bench_ppo.write_csv(rows, RESULTS / f"{args.out}.csv")
     bench_ppo.plot(rows, args.ns, "series", series, RESULTS / f"{args.out}.png",
                    "DQN on batched CartPole, Q-network on the GPU, environment on GPU vs CPU. Apple M3 Pro", steps=steps)
     print()
-    print(bench_ppo.markdown_table(rows, args.ns, "series", series, args.seeds, ("CPU s / GPU s", "numpy env", "mlx env"), steps=steps))
+    print(bench_ppo.markdown_table(rows, args.ns, "series", series, args.seeds, ratio, steps=steps))
     print()
     cfg = dqn.Config()
-    print(f"grad_steps/iter={args.grad_steps} batch={cfg.batch} buffer={cfg.buffer} lr={cfg.lr} eps_decay={cfg.eps_decay} "
+    print(f"grad_steps/iter={args.grad_steps} batches={args.batches} buffer={cfg.buffer} lr={cfg.lr} eps_decay={cfg.eps_decay} "
           f"target_every={cfg.target_every} learning_starts={cfg.learning_starts} time_budget={args.time_budget}s seeds={args.seeds}")
 
 
