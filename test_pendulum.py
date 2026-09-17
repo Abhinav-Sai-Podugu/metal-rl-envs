@@ -6,6 +6,7 @@ import mlx.core as mx
 import numpy as np
 
 import pendulum_metal
+import pendulum_metal_coop
 import pendulum_mlx
 import pendulum_np as env
 
@@ -74,10 +75,18 @@ def test_mlx_and_metal_match_numpy():
         metal_out, reward, mdone = p_mt.step(mx.array(state), mx.array(action))
         np.testing.assert_allclose(np.array(metal_out)[:, live], stepped[:, live], rtol=1e-3, atol=1e-3, err_msg=f"metal K={k}")
         assert (np.array(mdone) == done).all(), f"metal done K={k}"
+        p_co = pendulum_metal_coop.Pendulum(k)
+        coop_out, _, cdone = p_co.step(mx.array(state), mx.array(action))
+        np.testing.assert_allclose(np.array(coop_out)[:, live], stepped[:, live], rtol=1e-3, atol=1e-3, err_msg=f"cooperative K={k}")
+        assert (np.array(cdone) == done).all(), f"cooperative done K={k}"
 
 
 def test_metal_resets_and_lazy_chain():
-    p = pendulum_metal.Pendulum(4)
+    for cls in (pendulum_metal.Pendulum, pendulum_metal_coop.Pendulum):
+        _resets_and_chain(cls(4))
+
+
+def _resets_and_chain(p):
     n = 4096
     up = np.zeros((8, n), dtype=np.float32); up[:4] = np.pi
     first = np.array(p.step(mx.array(up), mx.ones(n, dtype=mx.int32))[0])

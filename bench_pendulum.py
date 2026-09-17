@@ -1,5 +1,5 @@
-"""v9: body complexity as a knob. The K-link pendulum at K = 2, 4, 8, 16, three
-implementations, swept over N. Per step the body costs about
+"""v9/v10: body complexity as a knob. The K-link pendulum at K = 2, 4, 8, 16, three
+implementations plus the SIMD-cooperative kernel of v10, swept over N. Per step the body costs about
 4 x (K^3/3 + 8K^2) flops and 8K^2 transcendentals: Acrobot's weight at K = 2,
 a hundred times CartPole's at K = 16.
 
@@ -20,6 +20,7 @@ import matplotlib.pyplot as plt
 
 import bench
 import pendulum_metal
+import pendulum_metal_coop
 import pendulum_mlx
 import pendulum_np
 from bench import COLORS, RESULTS, mlx_rollout, numpy_rollout
@@ -32,7 +33,7 @@ def flops_per_step(k):
 
 
 def configs(k, eval_every):
-    p_np, p_mx, p_mt = pendulum_np.Pendulum(k), pendulum_mlx.Pendulum(k), pendulum_metal.Pendulum(k)
+    p_np, p_mx, p_mt, p_co = pendulum_np.Pendulum(k), pendulum_mlx.Pendulum(k), pendulum_metal.Pendulum(k), pendulum_metal_coop.Pendulum(k)
     roll = lambda n, it, step, every: mlx_rollout(n, it, step, every, reset=p_mx.reset, n_actions=3)
     return {
         "numpy": lambda n, it: numpy_rollout(n, it, env=p_np, n_actions=3),
@@ -40,6 +41,8 @@ def configs(k, eval_every):
         f"mlx compiled, eval every {eval_every}": lambda n, it: roll(n, it, p_mx.step_compiled, eval_every),
         "metal kernel, eval every step": lambda n, it: roll(n, it, p_mt.step, 1),
         f"metal kernel, eval every {eval_every}": lambda n, it: roll(n, it, p_mt.step, eval_every),
+        "cooperative kernel, eval every step": lambda n, it: roll(n, it, p_co.step, 1),
+        f"cooperative kernel, eval every {eval_every}": lambda n, it: roll(n, it, p_co.step, eval_every),
     }
 
 
