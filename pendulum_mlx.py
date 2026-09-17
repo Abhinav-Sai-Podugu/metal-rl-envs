@@ -38,10 +38,12 @@ class Pendulum:
     def _dsdt(self, s, torque):
         k = self.k
         th, om = s[:k], s[k:]
-        diff = th[:, None, :] - th[None, :, :]
-        M = self.mu[:, :, None] * mx.cos(diff)
-        rhs = -(self.mu[:, :, None] * mx.sin(diff) * (om**2)[None, :, :]).sum(axis=1)
-        rhs = rhs - GRAVITY * self.mu_diag[:, None] * mx.sin(th)
+        c, sn = mx.cos(th), mx.sin(th)
+        cos_d = c[:, None, :] * c[None, :, :] + sn[:, None, :] * sn[None, :, :]
+        sin_d = sn[:, None, :] * c[None, :, :] - c[:, None, :] * sn[None, :, :]
+        M = self.mu[:, :, None] * cos_d
+        rhs = -(self.mu[:, :, None] * sin_d * (om**2)[None, :, :]).sum(axis=1)
+        rhs = rhs - GRAVITY * self.mu_diag[:, None] * sn
         rhs = mx.concatenate([(rhs[0] + torque)[None, :], rhs[1:]])
         acc = cholesky_solve(M, rhs, k)
         return mx.concatenate([om, acc])

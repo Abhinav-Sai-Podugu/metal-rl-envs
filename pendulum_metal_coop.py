@@ -48,12 +48,13 @@ inline float seg_sum(float v) {{
 template <uint K>
 float dsdt_coop(thread const float* th, thread const float* om, float torque, uint j, ushort base,
                 thread float* L, thread float* y) {{
-    float rhs = -G * float(K - j) * metal::sin(th[j]);
+    float cj = metal::cos(th[j]), sj = metal::sin(th[j]);
+    float rhs = -G * float(K - j) * sj;
     for (uint p = 0; p < K; p++) {{
+        float cp = simd_shuffle(cj, ushort(base + p)), sp = simd_shuffle(sj, ushort(base + p));
         float mu = float(K - metal::max(j, p));
-        float d = th[j] - th[p];
-        L[p] = mu * metal::cos(d);
-        rhs -= mu * metal::sin(d) * om[p] * om[p];
+        L[p] = mu * (cj * cp + sj * sp);                 // cos(θ_j - θ_p)
+        rhs -= mu * (sj * cp - cj * sp) * om[p] * om[p]; // sin(θ_j - θ_p)
     }}
     if (j == 0) rhs += torque;
     for (uint c = 0; c < K; c++) {{

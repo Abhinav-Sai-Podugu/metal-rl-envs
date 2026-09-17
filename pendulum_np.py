@@ -6,6 +6,10 @@ dynamics: M(θ) θ̈ = τ - c(θ, θ̇) - g(θ), with
 
     M_ij = μ_ij cos(θ_i - θ_j),   c_i = Σ_j μ_ij sin(θ_i - θ_j) θ̇_j²,   g_i = G μ_ii sin θ_i,
 
+(v10: the K² cosines and sines of angle differences come from K cosines and
+K sines by the addition formulas; v9 evaluated all 2K² directly, and that
+was what the step's time went on)
+
 where μ_ij is the mass hanging from the outer of joints i and j, K - max(i, j)
 for unit masses. M is symmetric positive definite, so each RK4 stage solves
 it by Cholesky. Per step that is 4 × (2K² transcendentals + K³/3 + O(K²))
@@ -64,10 +68,12 @@ class Pendulum:
     def _dsdt(self, s, torque):
         k, mu = self.k, self.mu
         th, om = s[:k], s[k:]
-        diff = th[:, None, :] - th[None, :, :]                      # (k, k, N)
-        M = mu[:, :, None] * np.cos(diff)                            # mass matrix per env
-        rhs = -(mu[:, :, None] * np.sin(diff) * (om**2)[None, :, :]).sum(axis=1)  # -c(θ, θ̇)
-        rhs = rhs - GRAVITY * np.diag(mu)[:, None] * np.sin(th)      # -g(θ)
+        c, sn = np.cos(th), np.sin(th)                               # K cosines and K sines, not K² of each:
+        cos_d = c[:, None, :] * c[None, :, :] + sn[:, None, :] * sn[None, :, :]   # cos(θ_i - θ_j)
+        sin_d = sn[:, None, :] * c[None, :, :] - c[:, None, :] * sn[None, :, :]   # sin(θ_i - θ_j)
+        M = mu[:, :, None] * cos_d                                   # mass matrix per env
+        rhs = -(mu[:, :, None] * sin_d * (om**2)[None, :, :]).sum(axis=1)  # -c(θ, θ̇)
+        rhs = rhs - GRAVITY * np.diag(mu)[:, None] * sn              # -g(θ)
         rhs[0] = rhs[0] + torque
         acc = cholesky_solve(M, rhs, k)
         return np.concatenate([om, acc])

@@ -27,13 +27,15 @@ from bench import COLORS, RESULTS, mlx_rollout, numpy_rollout
 
 
 def flops_per_step(k):
-    """Hand count, approximate: four RK4 stages of mass matrix, right-hand side, Cholesky and two substitutions."""
-    stage = 3 * k * k + 4 * k * k + k**3 / 3 + 2 * k * k + 2 * k
-    return round(4 * stage + 6 * 2 * k), 4 * (2 * k * k + k)
+    """Hand count, approximate: four RK4 stages of mass matrix and right-hand side (cos and sin of
+    differences by the addition formulas from 2K transcendentals), Cholesky and two substitutions."""
+    stage = 6 * k * k + 3 * k * k + 4 * k * k + k**3 / 3 + 2 * k * k + 2 * k
+    return round(4 * stage + 6 * 2 * k), 4 * 2 * k
 
 
 def configs(k, eval_every):
     p_np, p_mx, p_mt, p_co = pendulum_np.Pendulum(k), pendulum_mlx.Pendulum(k), pendulum_metal.Pendulum(k), pendulum_metal_coop.Pendulum(k)
+    p_v9 = pendulum_metal.Pendulum(k, pairwise_trig=True)
     roll = lambda n, it, step, every: mlx_rollout(n, it, step, every, reset=p_mx.reset, n_actions=3)
     return {
         "numpy": lambda n, it: numpy_rollout(n, it, env=p_np, n_actions=3),
@@ -42,7 +44,7 @@ def configs(k, eval_every):
         "metal kernel, eval every step": lambda n, it: roll(n, it, p_mt.step, 1),
         f"metal kernel, eval every {eval_every}": lambda n, it: roll(n, it, p_mt.step, eval_every),
         "cooperative kernel, eval every step": lambda n, it: roll(n, it, p_co.step, 1),
-        f"cooperative kernel, eval every {eval_every}": lambda n, it: roll(n, it, p_co.step, eval_every),
+        "v9 kernel (pairwise trig), eval every step": lambda n, it: roll(n, it, p_v9.step, 1),
     }
 
 
@@ -57,13 +59,14 @@ def crossover(rows, config):
 
 def summary_table(all_rows, ks, names):
     lines = ["| K | flops / step | transcendentals / step | " + " | ".join(f"{c}: peak steps/s" for c in names)
-             + " | " + " | ".join(f"crossover: {c}" for c in names[1:]) + " | best GPU / numpy at N = 65,536 |",
+             + " | " + " | ".join(f"crossover: {c}" for c in names[1:]) + " | best GPU / numpy at the largest N |",
              "|--:|--:|--:|" + "--:|" * (2 * len(names) - 1) + "--:|"]
     for k in ks:
         rows = [r for r in all_rows if r["k"] == k]
         peaks = [f"{max(r['steps_per_sec'] for r in rows if r['config'] == c):,}" for c in names]
         cross = [f"{crossover(rows, c):,}" if crossover(rows, c) else "never" for c in names[1:]]
-        at = {r["config"]: r["steps_per_sec"] for r in rows if r["n"] == 65536}
+        top = max(r["n"] for r in rows)
+        at = {r["config"]: r["steps_per_sec"] for r in rows if r["n"] == top}
         ratio = max(v for c, v in at.items() if c != "numpy") / at["numpy"]
         f, t = flops_per_step(k)
         lines.append(f"| {k} | ~{f:,} | {t:,} | " + " | ".join(peaks) + " | " + " | ".join(cross) + f" | {ratio:.0f}x |")

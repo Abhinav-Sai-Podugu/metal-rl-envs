@@ -23,13 +23,14 @@ float wrap(float x) {{ return x - 2.0f * PI * metal::floor((x + PI) / (2.0f * PI
 template <uint K>
 void dsdt(thread const float* th, thread const float* om, float torque, thread float* acc,
           thread float* M, thread float* rhs) {{
+    float c[K], s[K];
+    for (uint i = 0; i < K; i++) {{ c[i] = metal::cos(th[i]); s[i] = metal::sin(th[i]); }}
     for (uint i = 0; i < K; i++) {{
-        float r = -G * float(K - i) * metal::sin(th[i]);
+        float r = -G * float(K - i) * s[i];
         for (uint j = 0; j < K; j++) {{
             float mu = float(K - metal::max(i, j));
-            float d = th[i] - th[j];
-            M[i * K + j] = mu * metal::cos(d);
-            r -= mu * metal::sin(d) * om[j] * om[j];
+            M[i * K + j] = mu * (c[i] * c[j] + s[i] * s[j]);           // cos(θ_i - θ_j)
+            r -= mu * (s[i] * c[j] - c[i] * s[j]) * om[j] * om[j];     // sin(θ_i - θ_j)
         }}
         rhs[i] = r;
     }}
@@ -92,15 +93,25 @@ _SOURCE = """
 """
 
 
+# The v9 variant, kept for comparison: 2K² transcendentals per stage instead of 2K.
+_HEADER_PAIRWISE = _HEADER.replace(
+    "    float c[K], s[K];\n    for (uint i = 0; i < K; i++) { c[i] = metal::cos(th[i]); s[i] = metal::sin(th[i]); }\n", ""
+).replace("        float r = -G * float(K - i) * s[i];", "        float r = -G * float(K - i) * metal::sin(th[i]);").replace(
+    "            M[i * K + j] = mu * (c[i] * c[j] + s[i] * s[j]);           // cos(θ_i - θ_j)\n"
+    "            r -= mu * (s[i] * c[j] - c[i] * s[j]) * om[j] * om[j];     // sin(θ_i - θ_j)",
+    "            float d = th[i] - th[j];\n            M[i * K + j] = mu * metal::cos(d);\n            r -= mu * metal::sin(d) * om[j] * om[j];")
+assert _HEADER_PAIRWISE != _HEADER
+
+
 class Pendulum:
-    def __init__(self, k):
+    def __init__(self, k, pairwise_trig=False):
         self.k = k
         self.calls = 0
         self.kernel = mx.fast.metal_kernel(
-            name=f"pendulum{k}_step",
+            name=f"pendulum{k}_step" + ("_pairwise" if pairwise_trig else ""),
             input_names=["state", "action", "seed"],
             output_names=["next_state", "reward", "done"],
-            header=_HEADER,
+            header=_HEADER_PAIRWISE if pairwise_trig else _HEADER,
             source=_SOURCE,
         )
 
