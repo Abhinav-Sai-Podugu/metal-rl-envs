@@ -12,7 +12,40 @@ crossover N. This repo measures where that crossover is on an M3 Pro.
 Brax (JAX) and Isaac Gym (CUDA) have published this curve for NVIDIA and TPU
 hardware. Nobody had for Metal.
 
-## Result
+## Results at a glance
+
+Eight versions, each one question, each asked because of the previous
+answer. Every number is the median of repeated runs on the same M3 Pro and
+can be regenerated with one command; the section for each version carries
+its table, its plot and its own methodology.
+
+| | Question | Answer | Number |
+|--|---|---|---|
+| v1 | Does the GPU beat a vectorised CPU step, and from what N? | Yes, above N ≈ 2K to 4K | 19x at N = 131K |
+| v2 | Does a 20x faster environment train PPO faster? | No; the update is 80% to 94% of training time | at most 1.5x from where the environment lives |
+| v3 | Does a hand-written Metal kernel beat `mx.compile`? | Yes, at every N | 1.25B steps/s at N = 1M, 50x numpy |
+| v4 | Does a heavier body move the crossover? | To N = 1; the GPU step's cost did not change, the CPU's did | 102x at N = 262K |
+| v5 | Can large N be made to pay in PPO? | No; about ten iterations regardless of step size, gradient steps, clip or window | best 0.1 s at N = 256 |
+| v6 | Does an off-policy learner use the environment? | Up to N ≈ 256; then its own read rate is the ceiling | reads at most 5.9M samples/s of 1.2B produced |
+| v7 | Which learner consumes the environment? | ES with the whole rollout as one kernel launch | CartPole in ~20 ms, 15x to 28x the same algorithm in MLX ops |
+| v8 | The same on the heavier body? | Faster than CartPole; population size still buys nothing | Acrobot in 11 to 20 ms, 7.8 ms with a larger step |
+
+Three things held across all eight:
+
+- **The arithmetic is never the cost.** Memory layout (v1), launch count and
+  memory traffic (v3), body complexity being free on the GPU (v4) and
+  per-step weight reads (v8) each moved the numbers by 1.6x to 4x; flops
+  never did.
+- **Gradient learners are bounded by their own read rate, not by the
+  environment.** PPO reads a fixed number of samples per iteration (v2, v5),
+  DQN a fixed batch per gradient step (v6); neither can use more than a
+  few million environment steps per second of the billion available.
+- **No learner here ever needed more than a few thousand environments.**
+  Iterations, gradient steps and generations to solve were flat in N past
+  256 to 4,096 for every learner on both bodies (v5 to v8). What the GPU
+  bought was the cost of each of those, not their number.
+
+## v1: where is the crossover?
 
 ![environment steps per second against N, numpy CPU vs four MLX GPU configurations](results/steps_per_sec.png)
 
@@ -82,6 +115,45 @@ all of it in a few minutes.
 | 262,144 | 30,073,908 | 238,658,334 | 300,690,641 | 388,920,593 | 531,871,672 | 17.69x |
 | 524,288 | 29,821,233 | 214,494,032 | 226,420,572 | 430,930,003 | 374,559,882 | 14.45x |
 | 1,048,576 | 25,853,650 | 201,065,370 | 190,864,944 | 448,654,361 | 423,491,089 | 17.35x |
+
+### v1 methodology
+
+Fixed before any number existed, so the benchmark could not be tuned toward a
+flattering result.
+
+- **steps/sec = N × iterations ÷ wall-clock seconds** of the timed loop.
+- **Warm-up iterations are excluded** from the timed region. They also absorb
+  `mx.compile` time and allocator warm-up.
+- **`mx.eval` is forced before the clock stops**, on everything the
+  environment produced: the final state and every reward and done array in
+  the window, since a rollout buffer would consume all three. Timing a loop of
+  lazy MLX ops measures graph construction, not computation.
+- **Random action sampling happens inside the timed loop, on the same device,
+  for every backend.** A real loop pays it too.
+- **Identical dynamics on both devices**, enforced structurally: the MLX
+  module imports its constants from the numpy module, and a parity test feeds
+  the same states and actions to both and requires agreement to five decimals.
+  Both use the same (4, N) layout.
+- **Identical auto-reset semantics.** Terminated environments are reset in
+  place with a mask. Both implementations generate a fresh reset state for all
+  N every step and select per column. That is wasted work on a CPU and the
+  only branch-free shape on a GPU, and the baseline pays it on purpose so the
+  comparison isolates the device.
+- **The CPU baseline is single-threaded.** numpy elementwise ops do not use
+  multiple cores. A hand-parallelised CPU implementation could lift the CPU
+  line by up to the core count, which would move the crossover to the right
+  but not remove it. The crossover reported here is against one core.
+- **The CPU baseline is vectorised numpy over N**, not a Python loop over
+  single environments. A per-env loop is a strawman and would flatter the GPU.
+- **Power source is part of the environment.** A sweep taken on battery at
+  19% came out ~30% slower on every CPU-bound number, numpy and small-N MLX
+  alike, while GPU-bound numbers at large N were unchanged. That would have
+  overstated the GPU's lead by ~20%, so it was discarded and `bench.py` now
+  prints the power source. Two AC-power sweeps five days apart agreed within
+  ~3% at small N.
+- Each (configuration, N) is repeated three times and the median is reported.
+- No 500-step time limit. Under random actions an episode ends in about 20
+  steps, so it would never fire.
 
 ## v2: does a faster environment train faster?
 
@@ -783,45 +855,6 @@ Step size against population, kernel backend:
   not counted, as in v7.
 - The evaluation of the mean policy runs every generation, on the GPU
   environment, outside the clock, for every backend.
-
-## v1 methodology
-
-Fixed before any number existed, so the benchmark could not be tuned toward a
-flattering result.
-
-- **steps/sec = N × iterations ÷ wall-clock seconds** of the timed loop.
-- **Warm-up iterations are excluded** from the timed region. They also absorb
-  `mx.compile` time and allocator warm-up.
-- **`mx.eval` is forced before the clock stops**, on everything the
-  environment produced: the final state and every reward and done array in
-  the window, since a rollout buffer would consume all three. Timing a loop of
-  lazy MLX ops measures graph construction, not computation.
-- **Random action sampling happens inside the timed loop, on the same device,
-  for every backend.** A real loop pays it too.
-- **Identical dynamics on both devices**, enforced structurally: the MLX
-  module imports its constants from the numpy module, and a parity test feeds
-  the same states and actions to both and requires agreement to five decimals.
-  Both use the same (4, N) layout.
-- **Identical auto-reset semantics.** Terminated environments are reset in
-  place with a mask. Both implementations generate a fresh reset state for all
-  N every step and select per column. That is wasted work on a CPU and the
-  only branch-free shape on a GPU, and the baseline pays it on purpose so the
-  comparison isolates the device.
-- **The CPU baseline is single-threaded.** numpy elementwise ops do not use
-  multiple cores. A hand-parallelised CPU implementation could lift the CPU
-  line by up to the core count, which would move the crossover to the right
-  but not remove it. The crossover reported here is against one core.
-- **The CPU baseline is vectorised numpy over N**, not a Python loop over
-  single environments. A per-env loop is a strawman and would flatter the GPU.
-- **Power source is part of the environment.** A sweep taken on battery at
-  19% came out ~30% slower on every CPU-bound number, numpy and small-N MLX
-  alike, while GPU-bound numbers at large N were unchanged. That would have
-  overstated the GPU's lead by ~20%, so it was discarded and `bench.py` now
-  prints the power source. Two AC-power sweeps five days apart agreed within
-  ~3% at small N.
-- Each (configuration, N) is repeated three times and the median is reported.
-- No 500-step time limit. Under random actions an episode ends in about 20
-  steps, so it would never fire.
 
 ## Reproduce
 
