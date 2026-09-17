@@ -5,19 +5,21 @@ session from this point. Read it, then work with him directly.
 
 ## Status (2026-09-17)
 
-v1 to v9 are shipped and public. v1: batched CartPole, numpy vs MLX, GPU
+v1 to v10 are shipped and public. v1: batched CartPole, numpy vs MLX, GPU
 wins above N ≈ 4K, peaks at 19x. v2: PPO; the update, not the environment,
 is the bottleneck. v3: one hand-written Metal kernel beats mx.compile 1.7x
 to 2.9x, 1.25B steps/s at N = 1M. v4: on Acrobot the kernel beats numpy at
 N = 1, 102x at N = 262K. v5: no hyperparameter rule makes large N pay in
 PPO. v6: DQN uses fresh data to N ≈ 256; learner read rate is the ceiling.
 v7: ES with the whole rollout as one kernel solves CartPole in ~20 ms. v8:
-the same on Acrobot in 11 to 20 ms, 8 ms with step 0.3. v9: a K-link
-pendulum to 15K flops/step; the GPU pays for arithmetic from Acrobot's
-weight up but so does numpy, ~100x at any weight, kernel beats numpy at
-N = 1 for every body; a Metal thread over ~4 KB private memory returns
-wrong results silently. Findings, tables and methodology are in README.md.
-This is the stopping point.
+the same on Acrobot in 11 to 20 ms. v9: a K-link pendulum to 21K flops per
+step; ~100x over numpy at any weight, kernel beats numpy at N = 1 for every
+body; a Metal thread over ~4 KB private memory returns wrong results
+silently. v10: a SIMD-cooperative solve wins only with few environments (2x
+at N = 256, 0.4x at N = 65,536, K = 16); trig identity and memory placement
+change nothing; per-thread state is the bound at large N. Findings, tables
+and methodology are in README.md. Open: an O(K) articulated-body
+formulation. This is the stopping point.
 
 ## What this is
 

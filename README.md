@@ -14,7 +14,7 @@ hardware. Nobody had for Metal.
 
 ## Results at a glance
 
-Nine versions, each one question, each asked because of the previous
+Ten versions, each one question, each asked because of the previous
 answer. Every number is the median of repeated runs on the same M3 Pro and
 can be regenerated with one command; the section for each version carries
 its table, its plot and its own methodology.
@@ -30,8 +30,9 @@ its table, its plot and its own methodology.
 | v7 | Which learner consumes the environment? | ES with the whole rollout as one kernel launch | CartPole in ~20 ms, 15x to 28x the same algorithm in MLX ops |
 | v8 | The same on the heavier body? | Faster than CartPole; population size still buys nothing | Acrobot in 11 to 20 ms, 7.8 ms with a larger step |
 | v9 | How heavy can a body get? | The GPU pays for arithmetic from Acrobot's weight up, but numpy does too | ~100x at any weight; the kernel beats numpy at N = 1 for every body |
+| v10 | Does a SIMD-cooperative solve rescue heavy bodies? | Only with few environments; at large N the per-thread state is the bound | 2x at N = 256, 0.4x at N = 65,536 for K = 16 |
 
-Three things held across all nine:
+Three things held across all ten:
 
 - **The arithmetic is never the cost, until the body weighs as much as
   Acrobot.** Memory layout (v1), launch count and memory traffic (v3), body
@@ -914,7 +915,13 @@ vector operations over N in all three so the arithmetic is identical.
 
 ### Tables
 
-Same machine and conditions. 64 timed iterations after 8 untimed, median
+These are the v9 run, with cosines and sines of angle differences evaluated
+pairwise. v10 re-ran every configuration with the addition-formula version
+now in the code; numbers moved by at most 12% and no conclusion changed, and
+v10's tables below supersede these. `results/pendulum.csv` holds the v10
+run; this one is at commit `b8dc047`.
+
+64 timed iterations after 8 untimed, median
 of 3 runs, at each of 17 values of N from 1 to 65,536; fewer iterations
 than v1 because numpy at K = 16 takes seconds per step at large N. The
 crossover columns give the first N at which that configuration beats numpy.
@@ -1042,6 +1049,181 @@ it in about 40 minutes.
 - The flop counts are a hand count of the source with constant folding and
   are approximate.
 
+## v10: does a SIMD-cooperative solve rescue the heavy bodies?
+
+At large N, no: it halves throughput at K = 16. At small N, yes: it is the
+fastest configuration for heavy bodies up to a few thousand environments,
+because it puts K lanes to work on each of the few environments there are.
+The heavy-body kernel at large N is bound by how much state each thread
+carries, and neither cooperation, algebra nor memory placement moved that by
+more than a tenth.
+
+![K-link pendulum, seven configurations: peak throughput and crossover against body size](results/pendulum.png)
+
+The cooperative kernel (`pendulum_metal_coop.py`) gives each environment K
+adjacent lanes of a 32-lane SIMD group, one row of the mass matrix per lane.
+The Cholesky goes column by column with the diagonal lane's row broadcast by
+register shuffle; forward substitution broadcasts each solved element;
+back substitution sums each lane's contribution by a butterfly over the
+segment; accelerations are gathered into every lane for the next RK4 stage.
+Private memory per lane is about 110 floats at K = 16 instead of 430, and
+the K³ work is spread over K lanes. It passes the same parity tests as the
+other three implementations at every K.
+
+| K | cooperative / simple kernel at N = 1 | at N = 256 | first N where the simple kernel wins | at N = 65,536 |
+|--:|--:|--:|--:|--:|
+| 2 | 0.97x | 1.00x | 1 | 0.91x |
+| 4 | 1.06x | 1.00x | 512 | 0.78x |
+| 8 | 1.43x | 1.24x | 4,096 | 0.46x |
+| 16 | 1.48x | 1.97x | 2,048 | 0.40x |
+
+- **Two regimes.** With few environments the GPU is nearly empty and each
+  environment's step is a latency problem; K lanes shorten it, 1.5x at N = 1
+  and 2x at N = 256 for K = 16, and at that point the cooperative kernel
+  beats even the lazily chained simple kernel by 1.3x. With many environments
+  the GPU is full of threads already, and the cooperative version's
+  K(K+1)/2 shuffles per Cholesky, its serial substitution chains and its
+  idle lanes cost more than the parallelism saves: 0.4x at K = 16.
+- **The transcendentals were not the cost.** Computing the K² cosines and
+  sines of angle differences from K cosines and K sines by the addition
+  formulas, 2K evaluations per stage instead of 2K², is now in every
+  implementation. It is worth 1% to 12% on the kernel, -9% to +12% on numpy,
+  and nothing on compiled MLX. Sixteen transcendentals per stage were cheap
+  on this GPU; the "v9 kernel" column keeps the old version for comparison.
+- **Memory placement does not help either.** The mass matrix in threadgroup
+  memory, 32 threads per group to fit 32 KB, is 3x to 5x slower; storing
+  only its lower triangle gains 5% to 7% at K = 8 and failed parity at
+  K = 16 for a reason not chased, so it is not in the code.
+- **What is left is the state per thread.** One thread per environment at
+  K = 16 carries some 430 live floats, so few threads are resident per GPU
+  core and a long dependent chain of scalar arithmetic runs latency-bound.
+  Nothing that keeps one thread per environment changes that by more than a
+  tenth. The way out is to change the arithmetic: a chain's accelerations
+  can be computed in O(K) without forming a mass matrix at all
+  (Featherstone's articulated-body algorithm), which is a different
+  formulation of the dynamics and was not attempted.
+
+### Tables
+
+Same machine, conditions and parameters as v9. Seven configurations: the
+five of v9 with the addition-formula trig, the cooperative kernel, and the
+v9 kernel with pairwise trig as a reference.
+
+| K | flops / step | transcendentals / step | numpy: peak steps/s | mlx compiled, eval every step: peak steps/s | mlx compiled, eval every 32: peak steps/s | metal kernel, eval every step: peak steps/s | metal kernel, eval every 32: peak steps/s | cooperative kernel, eval every step: peak steps/s | v9 kernel (pairwise trig), eval every step: peak steps/s | crossover: mlx compiled, eval every step | crossover: mlx compiled, eval every 32 | crossover: metal kernel, eval every step | crossover: metal kernel, eval every 32 | crossover: cooperative kernel, eval every step | crossover: v9 kernel (pairwise trig), eval every step | best GPU / numpy at the largest N |
+|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| 2 | ~291 | 16 | 11,414,004 | 68,636,437 | 92,528,130 | 268,821,837 | 751,056,048 | 243,970,131 | 266,079,060 | 8,192 | 4,096 | 2,048 | 1 | 2,048 | 2,048 | 91x |
+| 4 | ~1,125 | 32 | 3,553,481 | 32,357,101 | 39,069,192 | 161,451,086 | 298,141,469 | 125,968,001 | 154,035,293 | 2,048 | 1,024 | 512 | 1 | 512 | 256 | 114x |
+| 8 | ~4,683 | 64 | 977,757 | 10,471,562 | 10,830,313 | 69,254,364 | 91,367,975 | 31,743,958 | 61,988,262 | 4,096 | 2,048 | 1 | 1 | 1 | 1 | 122x |
+| 16 | ~21,141 | 128 | 186,541 | 2,466,826 | 2,248,060 | 10,699,994 | 12,117,786 | 4,326,718 | 10,337,062 | 2,048 | 2,048 | 1 | 1 | 1 | 1 | 78x |
+
+<details><summary>K = 2, per N</summary>
+
+| N | numpy | mlx compiled, eval every step | mlx compiled, eval every 32 | metal kernel, eval every step | metal kernel, eval every 32 | cooperative kernel, eval every step | v9 kernel (pairwise trig), eval every step | best GPU / numpy |
+|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| 1 | 12,058 | 1,905 | 3,008 | 5,212 | 21,206 | 5,062 | 4,997 | 1.76x |
+| 2 | 22,787 | 3,642 | 6,334 | 11,326 | 45,043 | 10,330 | 10,332 | 1.98x |
+| 4 | 44,951 | 9,155 | 12,783 | 21,392 | 93,740 | 21,255 | 20,628 | 2.09x |
+| 8 | 90,652 | 15,580 | 25,011 | 41,619 | 174,093 | 40,865 | 40,839 | 1.92x |
+| 16 | 180,629 | 33,725 | 50,764 | 85,052 | 367,349 | 82,705 | 80,992 | 2.03x |
+| 32 | 348,942 | 56,464 | 99,207 | 167,679 | 724,155 | 167,393 | 161,843 | 2.08x |
+| 64 | 672,794 | 124,565 | 199,472 | 329,174 | 1,409,397 | 329,040 | 334,455 | 2.09x |
+| 128 | 1,241,102 | 229,809 | 390,631 | 661,534 | 2,805,520 | 657,664 | 662,388 | 2.26x |
+| 256 | 2,185,444 | 433,893 | 783,823 | 1,332,303 | 5,791,872 | 1,333,415 | 1,336,992 | 2.65x |
+| 512 | 3,590,030 | 966,964 | 1,564,587 | 2,654,757 | 11,432,192 | 2,624,879 | 2,716,631 | 3.18x |
+| 1,024 | 5,351,825 | 2,020,764 | 1,821,087 | 5,244,611 | 21,979,040 | 5,085,862 | 5,240,382 | 4.11x |
+| 2,048 | 7,062,640 | 4,015,194 | 5,637,940 | 10,613,690 | 46,484,245 | 10,605,639 | 10,489,886 | 6.58x |
+| 4,096 | 9,363,275 | 8,588,843 | 12,329,468 | 20,950,710 | 89,005,690 | 20,553,931 | 20,976,135 | 9.51x |
+| 8,192 | 11,414,004 | 15,223,597 | 24,121,692 | 41,172,295 | 179,466,177 | 40,848,439 | 41,175,664 | 15.72x |
+| 16,384 | 11,154,574 | 30,510,649 | 48,173,662 | 89,130,519 | 344,058,694 | 76,142,398 | 79,421,529 | 30.84x |
+| 32,768 | 9,574,508 | 50,096,097 | 76,219,078 | 173,228,267 | 512,359,628 | 141,147,906 | 150,802,368 | 53.51x |
+| 65,536 | 8,262,723 | 68,636,437 | 92,528,130 | 268,821,837 | 751,056,048 | 243,970,131 | 266,079,060 | 90.90x |
+
+</details>
+
+<details><summary>K = 4, per N</summary>
+
+| N | numpy | mlx compiled, eval every step | mlx compiled, eval every 32 | metal kernel, eval every step | metal kernel, eval every 32 | cooperative kernel, eval every step | v9 kernel (pairwise trig), eval every step | best GPU / numpy |
+|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| 1 | 7,279 | 1,389 | 1,894 | 4,604 | 18,948 | 4,872 | 4,400 | 2.60x |
+| 2 | 13,838 | 2,778 | 3,724 | 9,072 | 39,174 | 9,855 | 9,411 | 2.83x |
+| 4 | 27,926 | 5,546 | 7,544 | 17,770 | 79,244 | 20,012 | 19,286 | 2.84x |
+| 8 | 53,912 | 10,880 | 13,385 | 36,936 | 157,456 | 39,688 | 37,871 | 2.92x |
+| 16 | 107,683 | 21,645 | 20,689 | 74,802 | 317,951 | 79,959 | 72,929 | 2.95x |
+| 32 | 205,537 | 43,776 | 56,826 | 148,957 | 646,916 | 164,831 | 146,669 | 3.15x |
+| 64 | 394,201 | 82,890 | 115,999 | 300,934 | 1,256,618 | 323,029 | 298,309 | 3.19x |
+| 128 | 704,964 | 161,888 | 231,859 | 602,558 | 2,601,874 | 633,284 | 584,459 | 3.69x |
+| 256 | 1,187,451 | 326,559 | 464,932 | 1,184,689 | 4,435,451 | 1,185,146 | 1,229,457 | 3.74x |
+| 512 | 1,743,895 | 671,379 | 942,606 | 2,312,172 | 9,552,308 | 2,263,498 | 2,350,252 | 5.48x |
+| 1,024 | 1,726,578 | 1,271,786 | 1,865,482 | 4,736,301 | 19,122,734 | 4,360,165 | 4,674,298 | 11.08x |
+| 2,048 | 2,569,132 | 2,609,783 | 3,711,301 | 9,532,307 | 36,904,361 | 8,563,299 | 9,163,925 | 14.36x |
+| 4,096 | 3,343,322 | 4,827,528 | 7,483,201 | 18,590,290 | 70,244,582 | 12,496,362 | 19,287,762 | 21.01x |
+| 8,192 | 3,553,481 | 8,269,299 | 14,169,627 | 37,206,635 | 123,175,930 | 18,774,525 | 36,323,755 | 34.66x |
+| 16,384 | 3,407,449 | 17,967,580 | 28,338,552 | 61,124,229 | 166,722,898 | 47,539,823 | 62,116,980 | 48.93x |
+| 32,768 | 2,842,734 | 26,804,861 | 35,519,589 | 106,040,615 | 237,621,897 | 95,780,956 | 102,591,191 | 83.59x |
+| 65,536 | 2,605,908 | 32,357,101 | 39,069,192 | 161,451,086 | 298,141,469 | 125,968,001 | 154,035,293 | 114.41x |
+
+</details>
+
+<details><summary>K = 8, per N</summary>
+
+| N | numpy | mlx compiled, eval every step | mlx compiled, eval every 32 | metal kernel, eval every step | metal kernel, eval every 32 | cooperative kernel, eval every step | v9 kernel (pairwise trig), eval every step | best GPU / numpy |
+|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| 1 | 2,553 | 778 | 723 | 2,625 | 8,972 | 3,742 | 3,255 | 3.51x |
+| 2 | 4,793 | 716 | 1,395 | 6,020 | 18,411 | 8,498 | 6,631 | 3.84x |
+| 4 | 9,548 | 2,768 | 2,876 | 12,268 | 36,016 | 15,127 | 13,442 | 3.77x |
+| 8 | 17,818 | 5,450 | 5,746 | 21,751 | 74,910 | 32,793 | 25,663 | 4.20x |
+| 16 | 37,623 | 11,159 | 11,695 | 44,414 | 150,907 | 64,686 | 52,299 | 4.01x |
+| 32 | 73,425 | 22,296 | 22,306 | 74,213 | 295,369 | 132,311 | 102,183 | 4.02x |
+| 64 | 140,222 | 41,782 | 42,697 | 83,672 | 593,867 | 253,221 | 204,846 | 4.24x |
+| 128 | 243,796 | 83,395 | 72,956 | 364,689 | 1,153,965 | 515,550 | 410,231 | 4.73x |
+| 256 | 330,489 | 165,754 | 166,976 | 794,811 | 2,341,631 | 984,423 | 813,987 | 7.09x |
+| 512 | 608,855 | 316,738 | 222,219 | 1,526,193 | 4,635,969 | 1,990,221 | 1,585,772 | 7.61x |
+| 1,024 | 798,756 | 639,885 | 662,612 | 3,202,117 | 9,254,156 | 3,912,344 | 3,243,233 | 11.59x |
+| 2,048 | 896,572 | 785,356 | 1,322,042 | 5,741,836 | 18,206,973 | 7,308,780 | 6,336,891 | 20.31x |
+| 4,096 | 977,757 | 1,664,433 | 2,770,800 | 12,863,517 | 36,259,695 | 11,699,354 | 12,158,813 | 37.08x |
+| 8,192 | 933,478 | 4,068,740 | 5,390,915 | 21,429,613 | 66,779,067 | 17,861,936 | 23,694,357 | 71.54x |
+| 16,384 | 809,193 | 5,474,273 | 9,283,812 | 36,869,707 | 76,870,847 | 22,964,263 | 38,995,318 | 95.00x |
+| 32,768 | 739,141 | 10,471,562 | 10,830,313 | 51,189,274 | 84,490,042 | 27,377,472 | 48,067,983 | 114.31x |
+| 65,536 | 748,217 | 10,077,654 | 9,688,320 | 69,254,364 | 91,367,975 | 31,743,958 | 61,988,262 | 122.11x |
+
+</details>
+
+<details><summary>K = 16, per N</summary>
+
+| N | numpy | mlx compiled, eval every step | mlx compiled, eval every 32 | metal kernel, eval every step | metal kernel, eval every 32 | cooperative kernel, eval every step | v9 kernel (pairwise trig), eval every step | best GPU / numpy |
+|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| 1 | 515 | 162 | 174 | 1,624 | 2,427 | 2,410 | 1,524 | 4.71x |
+| 2 | 1,001 | 350 | 353 | 2,958 | 4,908 | 5,175 | 2,978 | 4.90x |
+| 4 | 2,010 | 698 | 680 | 5,987 | 9,948 | 9,950 | 6,193 | 4.95x |
+| 8 | 3,917 | 1,388 | 1,258 | 12,031 | 19,558 | 20,267 | 12,338 | 4.99x |
+| 16 | 7,893 | 2,799 | 2,582 | 24,540 | 38,960 | 40,196 | 24,575 | 4.94x |
+| 32 | 14,852 | 5,430 | 5,193 | 49,760 | 77,777 | 84,121 | 49,339 | 5.24x |
+| 64 | 27,030 | 10,167 | 9,996 | 99,710 | 154,793 | 151,245 | 99,128 | 5.73x |
+| 128 | 48,647 | 20,362 | 19,927 | 195,944 | 304,148 | 306,459 | 195,589 | 6.25x |
+| 256 | 78,833 | 40,456 | 41,194 | 326,190 | 495,057 | 643,215 | 339,988 | 6.28x |
+| 512 | 117,719 | 78,909 | 79,304 | 660,583 | 984,398 | 1,270,615 | 600,000 | 8.36x |
+| 1,024 | 157,014 | 153,520 | 155,234 | 1,332,740 | 1,956,425 | 1,805,167 | 1,290,148 | 12.46x |
+| 2,048 | 159,268 | 304,661 | 301,832 | 2,471,423 | 3,664,291 | 2,209,094 | 2,407,140 | 23.01x |
+| 4,096 | 164,990 | 609,277 | 596,694 | 4,197,631 | 6,550,509 | 2,827,565 | 4,616,535 | 39.70x |
+| 8,192 | 186,541 | 1,202,335 | 1,177,530 | 7,321,623 | 8,627,669 | 3,372,218 | 7,298,817 | 46.25x |
+| 16,384 | 157,243 | 2,302,126 | 1,642,037 | 8,792,083 | 10,067,590 | 3,765,457 | 8,588,485 | 64.03x |
+| 32,768 | 164,020 | 2,466,826 | 2,248,060 | 9,182,397 | 11,340,738 | 3,928,629 | 9,508,218 | 69.14x |
+| 65,536 | 156,109 | 2,090,343 | 1,970,461 | 10,699,994 | 12,117,786 | 4,326,718 | 10,337,062 | 77.62x |
+
+</details>
+
+### v10 methodology
+
+- **Same tests as v9 for every variant**: the cooperative kernel and the
+  reference kernel both agree with numpy to 1e-3 at every K on random
+  folded configurations, and the energy and double-pendulum checks are
+  unchanged.
+- The cooperative kernel requires K to be a power of two no larger than 32,
+  so the K-lane segments align with SIMD groups, and launches K × N
+  threads.
+- The two memory-placement variants were measured in a scratch script at
+  N = 65,536 and are not in the repository.
+
 ## Reproduce
 
 ```
@@ -1083,9 +1265,10 @@ uv run ppo.py --n 256  # one PPO run with a per-iteration log
 - `dqn.py`, `test_dqn.py`, `bench_dqn.py`: v6, DQN with the replay buffer
   on the GPU, its tests, and the sweep with a batch-size axis.
 - `pendulum_np.py`, `pendulum_mlx.py`, `pendulum_metal.py`,
-  `test_pendulum.py`, `bench_pendulum.py`: v9, the K-link pendulum in all
-  three implementations, its oracle, energy and parity tests, and the sweep
-  with body size as the axis.
+  `pendulum_metal_coop.py`, `test_pendulum.py`, `bench_pendulum.py`: v9 and
+  v10, the K-link pendulum in all three implementations plus the
+  SIMD-cooperative kernel, its oracle, energy and parity tests, and the
+  sweep with body size as the axis.
 - `es.py`, `cartpole_rollout_metal.py`, `acrobot_rollout_metal.py`,
   `test_es.py`, `bench_es.py`: v7 and v8, Evolution Strategies on three
   backends for either task, the two whole-rollout kernels, tests including
@@ -1107,5 +1290,6 @@ them work. v6: DQN, the off-policy learner, with a batch-size diagnostic.
 v7: Evolution Strategies with the whole rollout as one kernel, the learner
 that consumes the environment. v8: the same on Acrobot. v9: a K-link
 pendulum with body size as the knob, to a hundred times CartPole's
-arithmetic. Each shipped complete. Not here: a SIMD-cooperative solve for
-the heavy bodies, contacts, anything beyond one machine.
+arithmetic. v10: a SIMD-cooperative solve for it, which wins only with few
+environments. Each shipped complete. Not here: an O(K) articulated-body
+formulation of the chain, contacts, anything beyond one machine.
