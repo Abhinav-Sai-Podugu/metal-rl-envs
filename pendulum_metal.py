@@ -18,10 +18,11 @@ constant float PI = 3.141592653589793f;
 {RNG_HEADER}
 float wrap(float x) {{ return x - 2.0f * PI * metal::floor((x + PI) / (2.0f * PI)); }}
 
-// θ̈ for one env: build M and the right-hand side, Cholesky-solve in place.
+// θ̈ for one env: build M and the right-hand side in caller-provided scratch,
+// Cholesky-solve in place. Precise divide and sqrt: MLX compiles with fast math.
 template <uint K>
-void dsdt(thread const float* th, thread const float* om, float torque, thread float* acc) {{
-    float M[K * K], rhs[K];
+void dsdt(thread const float* th, thread const float* om, float torque, thread float* acc,
+          thread float* M, thread float* rhs) {{
     for (uint i = 0; i < K; i++) {{
         float r = -G * float(K - i) * metal::sin(th[i]);
         for (uint j = 0; j < K; j++) {{
@@ -38,18 +39,18 @@ void dsdt(thread const float* th, thread const float* om, float torque, thread f
         for (uint j = 0; j <= i; j++) {{
             float s = M[i * K + j];
             for (uint p = 0; p < j; p++) s -= M[i * K + p] * M[j * K + p];
-            M[i * K + j] = (i == j) ? metal::sqrt(s) : s / M[j * K + j];
+            M[i * K + j] = (i == j) ? metal::precise::sqrt(s) : metal::precise::divide(s, M[j * K + j]);
         }}
     }}
     for (uint i = 0; i < K; i++) {{
         float s = rhs[i];
         for (uint p = 0; p < i; p++) s -= M[i * K + p] * acc[p];
-        acc[i] = s / M[i * K + i];
+        acc[i] = metal::precise::divide(s, M[i * K + i]);
     }}
     for (int i = K - 1; i >= 0; i--) {{
         float s = acc[i];
         for (uint p = i + 1; p < K; p++) s -= M[p * K + i] * acc[p];
-        acc[i] = s / M[i * K + i];
+        acc[i] = metal::precise::divide(s, M[i * K + i]);
     }}
 }}
 """
@@ -58,17 +59,20 @@ _SOURCE = """
     uint i = thread_position_in_grid.x;
     uint n = state_shape[1];
     if (i >= n) return;
-    float th[K], om[K], t1[K], o1[K], k1[K], k2[K], k3[K], k4[K];
+    // One scratch mass matrix shared by the four RK4 stages. With a private matrix per
+    // inlined stage the thread's private memory passed ~4 KB at K = 14 and the results
+    // went silently wrong; sharing keeps K = 16 under 2 KB.
+    float th[K], om[K], t1[K], o1[K], k1[K], k2[K], k3[K], k4[K], M[K * K], rhs[K];
     for (uint j = 0; j < K; j++) { th[j] = state[j * n + i]; om[j] = state[(K + j) * n + i]; }
     float torque = (float(action[i]) - 1.0f) * TORQUE;
     // RK4 on (θ, θ̇): the angle derivative is θ̇ itself, so only θ̈ needs the solve.
-    dsdt<K>(th, om, torque, k1);
+    dsdt<K>(th, om, torque, k1, M, rhs);
     for (uint j = 0; j < K; j++) { t1[j] = th[j] + DT / 2.0f * om[j];               o1[j] = om[j] + DT / 2.0f * k1[j]; }
-    dsdt<K>(t1, o1, torque, k2);
+    dsdt<K>(t1, o1, torque, k2, M, rhs);
     for (uint j = 0; j < K; j++) { t1[j] = th[j] + DT / 2.0f * (om[j] + DT / 2.0f * k1[j]); o1[j] = om[j] + DT / 2.0f * k2[j]; }
-    dsdt<K>(t1, o1, torque, k3);
+    dsdt<K>(t1, o1, torque, k3, M, rhs);
     for (uint j = 0; j < K; j++) { t1[j] = th[j] + DT * (om[j] + DT / 2.0f * k2[j]);        o1[j] = om[j] + DT * k3[j]; }
-    dsdt<K>(t1, o1, torque, k4);
+    dsdt<K>(t1, o1, torque, k4, M, rhs);
     float height = 0.0f;
     float nth[K], nom[K];
     for (uint j = 0; j < K; j++) {
