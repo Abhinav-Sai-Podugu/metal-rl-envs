@@ -86,7 +86,7 @@ def markdown_table(rows, ns, series_key, series, seeds, ratio=None, steps=("env_
             s, st = _medians(rows, series_key, name, n, "train_seconds"), _medians(rows, series_key, name, n, steps[0])
             k = sum(1 for r in rows if r[series_key] == name and r["n"] == n and r["solved"])
             secs[name] = s
-            cells += [f"{s:.1f}" if s else "—", f"{st:,.0f}" if st else "—", f"{k}/{len(seeds)}"]
+            cells += [f"{s:.3g}" if s else "—", f"{st:,.0f}" if st else "—", f"{k}/{len(seeds)}"]  # 3 significant digits: 0.041, 9.73, 115
         line = f"| {n:,} | " + " | ".join(cells)
         if ratio:
             _, a, b = ratio

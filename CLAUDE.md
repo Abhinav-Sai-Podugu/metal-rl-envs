@@ -5,20 +5,19 @@ session from this point. Read it, then work with him directly.
 
 ## Status (2026-09-17)
 
-v1 to v6 are shipped and public. v1: batched CartPole, numpy vs MLX, the GPU
-wins above N ≈ 4K and peaks at 19x. v2: PPO on it; the environment is not
-the bottleneck at any N, the update is. v3: one hand-written Metal kernel
-beats mx.compile 1.7x to 2.9x, 1.25B steps/s at N = 1M, 50x numpy. v4: on
-Acrobot (8x the arithmetic) the kernel beats numpy at N = 1, crossover
-gone, 102x at N = 262K. v5: no hyperparameter rule makes large N pay in
-PPO; iterations to solve ≈ 10 regardless of everything tried. v6: DQN uses
-fresh data up to N ≈ 256 (2.4x faster than N = 1), the GPU environment is
-worth 1.3x to 1.75x in training wall-clock for the first time, batch 1,024
-gives the project's best solve at 7.8 s, and the learner's read rate (at
-most 5.9M samples/s vs 1.2B produced) is the ceiling. Findings, tables and
-methodology are in README.md. The only remaining customer for the
-environment's throughput is a gradient-free population method; that is a
-different project. This is the stopping point.
+v1 to v7 are shipped and public. v1: batched CartPole, numpy vs MLX, GPU
+wins above N ≈ 4K, peaks at 19x. v2: PPO; the update, not the environment,
+is the bottleneck. v3: one hand-written Metal kernel beats mx.compile 1.7x
+to 2.9x, 1.25B steps/s at N = 1M. v4: on Acrobot the kernel beats numpy at
+N = 1, 102x at N = 262K. v5: no hyperparameter rule makes large N pay in
+PPO; ~10 iterations regardless. v6: DQN uses fresh data to N ≈ 256, best
+solve 7.8 s, learner read rate is the ceiling. v7: Evolution Strategies
+with the whole rollout as one kernel launch solves CartPole in ~20 ms,
+five times PPO's best, consumes 200M useful env steps/s (1.2B nominal),
+11x to 30x the same algorithm in MLX ops and up to 336x the CPU; population
+size and step size buy nothing past a few thousand members. Findings,
+tables and methodology are in README.md. The project's question is
+answered end to end; this is the stopping point.
 
 ## What this is
 

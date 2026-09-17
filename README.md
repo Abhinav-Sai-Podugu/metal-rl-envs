@@ -518,6 +518,144 @@ minutes; the batch sweep is
 - The Q-network is CleanRL's 120-84 ReLU MLP. Every rule is a configuration
   of `dqn.py`; no training code differs between arms.
 
+## v7: the learner whose inner loop is the environment
+
+Evolution Strategies, and it is the fastest solve in the project by five
+times: **CartPole in about 20 milliseconds of training**, at any population
+from 64 to 4,096, with the whole rollout as one kernel launch per
+generation. It is also the first learner that runs the environment at the
+environment's own ceiling.
+
+![ES seconds and generations to solve against population size, three backends](results/es.png)
+
+OpenAI-style ES (Salimans et al. 2017): antithetic perturbations of a mean
+policy, fitness ranked and normalised, one weighted-sum update per
+generation, no gradient anywhere. The population is the batch of
+environments; each member is a 4-32-2 MLP with its own weights. Three
+backends with identical arithmetic: numpy, everything on the CPU; mlx, the
+natural port, MLX ops for the population's policy and the v3 step kernel;
+and metal, one thread per member running its policy and the physics for the
+full 500-step horizon in registers and writing back one number
+(`cartpole_rollout_metal.py`). Five seeds, median over solved seeds.
+
+- **One kernel launch per generation is worth 11x to 30x over the same
+  algorithm in MLX ops, and 20x to 340x over the CPU.** The ops version
+  reads every member's 900 bytes of weights and writes its state on every
+  step; the fused kernel reads the weights once. Its generation costs about
+  1.5 ms up to a population of 4,096, nearly all of it sampling, ranking and
+  the update rather than the rollout, and CartPole takes about 20 of them.
+- **Population size buys nothing past a few thousand.** Generations to
+  solve are 14 to 23 at every population on every backend, the seed spread
+  wider than any difference between sizes. From 65,536 members to a million
+  the per-seed generation counts are identical: each seed's initial policy is
+  the same first draw, and once the population is large the rank-normalised
+  update is the smoothed gradient itself, so the trajectory no longer
+  depends on which members were sampled. Wall-clock is flat to 4,096 and
+  linear after.
+- **A larger population does not permit larger steps either.** Step sizes
+  0.3 and 1.0 take 20 to 28 generations against 19 to 22 at 0.1, at every
+  population tried (`results/es_lr.csv`). Below 0.1 the count grows as the
+  step shrinks, 39 at 0.05 and 87 at 0.02 in the one-seed check; above it
+  the count is flat. The floor of about 20 generations is not a step-size
+  limit.
+- **The learner consumes the environment.** Counting only steps a member
+  took before its first termination, the kernel backend runs 200M
+  environment steps per second at a population of 4,096 and about 110M from
+  16K to a million, where sampling and reducing up to a gigabyte of
+  perturbations per generation is the cost. DQN's best read rate was 5.9M,
+  PPO's rollout about 20M. Counted nominally as population times horizon,
+  the kernel drives the environment at 1.2B steps per second at 4,096, the
+  standalone step kernel's own ceiling from v3.
+- **The CPU falls out of the race.** numpy takes 50 s at 16,384 and misses
+  the 300 s budget on two seeds of five at 65,536; the kernel takes 0.23 s
+  and 1.3 s. This is the one learner where the environment's speed is the
+  whole story, and the 172x to 336x between the two at large populations is
+  v4's kind of number arriving in training time.
+
+### Tables
+
+Same machine and conditions. Seconds are training time, median over solved
+seeds; the evaluation of the mean policy runs every generation outside the
+clock. `uv run bench_es.py` regenerates the main sweep in about 45 minutes,
+most of it the CPU backend; `--backends metal --ns 262144 1048576 --out es_big`
+and `--backends metal --lrs 0.1 0.3 1.0 --ns 256 4096 65536 --series lr --out es_lr`
+are the two follow-ups.
+
+| N | numpy: s to solve | numpy: generations to solve | solved | mlx: s to solve | mlx: generations to solve | solved | metal: s to solve | metal: generations to solve | solved |
+|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| 64 | 0.359 | 16 | 5/5 | 0.388 | 18 | 5/5 | 0.0193 | 18 | 5/5 |
+| 256 | 1.1 | 20 | 5/5 | 0.411 | 19 | 5/5 | 0.0255 | 19 | 5/5 |
+| 1,024 | 2.88 | 16 | 5/5 | 0.632 | 23 | 5/5 | 0.0311 | 23 | 5/5 |
+| 4,096 | 11.4 | 16 | 5/5 | 1.02 | 21 | 5/5 | 0.0339 | 21 | 5/5 |
+| 16,384 | 49.6 | 14 | 5/5 | 3.48 | 22 | 5/5 | 0.231 | 22 | 5/5 |
+| 65,536 | 229 | 15 | 3/5 | 14.4 | 22 | 5/5 | 1.33 | 22 | 5/5 |
+
+Per-seed spread:
+
+| P | numpy: seconds, min..max | numpy: generations, min..max | mlx: seconds, min..max | mlx: generations, min..max | metal: seconds, min..max | metal: generations, min..max |
+|--:|--:|--:|--:|--:|--:|--:|
+| 64 | 0.246..0.658 | 11..29 | 0.301..0.823 | 14..38 | 0.0147..0.032 | 14..38 |
+| 256 | 0.751..1.35 | 14..25 | 0.26..0.604 | 12..28 | 0.0155..0.038 | 12..28 |
+| 1,024 | 1.92..3.73 | 11..21 | 0.368..0.723 | 14..24 | 0.0195..0.0339 | 14..24 |
+| 4,096 | 6.27..15.2 | 9..21 | 0.452..1.24 | 9..24 | 0.0145..0.0419 | 9..24 |
+| 16,384 | 25.5..76 | 8..23 | 1.74..3.8 | 11..24 | 0.0787..0.272 | 11..24 |
+| 65,536 | 117..258 | 8..17 | 6.54..15.7 | 10..24 | 0.44..1.55 | 10..24 |
+
+Environment steps per second consumed by the learner, median over seeds.
+"Steps taken" counts a member's steps to its first termination; "P×H×gens"
+is the nominal population times horizon, which is what the two loop
+backends actually execute, terminated members included:
+
+| P | numpy: steps taken / s | numpy: P×H×gens / s | mlx: steps taken / s | mlx: P×H×gens / s | metal: steps taken / s | metal: P×H×gens / s |
+|--:|--:|--:|--:|--:|--:|--:|
+| 64 | 0.2M | 1.4M | 0.3M | 1.5M | 5.7M | 30.5M |
+| 256 | 0.5M | 2.4M | 0.9M | 5.9M | 13.2M | 99.3M |
+| 1,024 | 0.5M | 2.9M | 3.3M | 18.8M | 61.8M | 367.8M |
+| 4,096 | 0.5M | 2.9M | 6.9M | 40.8M | 198.0M | 1,215.7M |
+| 16,384 | 0.4M | 2.5M | 8.3M | 51.7M | 121.4M | 778.8M |
+| 65,536 | 0.4M | 2.1M | 8.4M | 50.1M | 92.8M | 543.7M |
+
+The kernel backend alone at larger populations:
+
+| N | metal: s to solve | metal: generations to solve | solved |
+|--:|--:|--:|--:|
+| 262,144 | 4.7 | 22 | 5/5 |
+| 1,048,576 | 18.6 | 22 | 5/5 |
+
+| P | metal: steps taken / s | metal: P×H×gens / s |
+|--:|--:|--:|
+| 262,144 | 112.7M | 613.9M |
+| 1,048,576 | 112.5M | 625.4M |
+
+Step size against population, kernel backend:
+
+| N | lr 0.1: s to solve | lr 0.1: generations to solve | solved | lr 0.3: s to solve | lr 0.3: generations to solve | solved | lr 1.0: s to solve | lr 1.0: generations to solve | solved |
+|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| 256 | 0.0244 | 19 | 5/5 | 0.0242 | 20 | 5/5 | 0.0229 | 24 | 5/5 |
+| 4,096 | 0.0337 | 21 | 5/5 | 0.0415 | 25 | 5/5 | 0.0287 | 21 | 5/5 |
+| 65,536 | 1.23 | 22 | 5/5 | 1.99 | 28 | 5/5 | 2.32 | 27 | 5/5 |
+
+### v7 methodology
+
+- **Hyperparameters were fixed from a one-seed check at population 256**:
+  step size 0.1 and noise scale 0.1, from trying 0.02, 0.05 and 0.1 for the
+  step and 0.05 and 0.1 for the noise. The same values are used at every
+  population and on every backend; the step-size sweep above is the only
+  place they vary.
+- **Fitness is steps survived over a 500-step horizon from a fresh reset.**
+  The kernel ends a member's episode at its first termination; the loop
+  backends keep stepping terminated members to the horizon, with auto-reset,
+  because that is the shape a batched step has. A test runs both on the same
+  population and initial states and requires the same survival count for
+  over 95% of members; the rest differ because a last-bit difference in
+  `tanh` can flip a near-tie action and the trajectory is chaotic.
+- **Environment steps are counted as steps taken**, so all three backends
+  are measured on the same quantity; the nominal count is shown alongside.
+- Time budget 300 s, three times the other learners', so the CPU backend
+  could finish at 16,384 members; it still could not at 65,536.
+- The mean policy is evaluated with the same greedy criterion as every
+  learner in this repo, on the GPU environment, for every backend.
+
 ## v1 methodology
 
 Fixed before any number existed, so the benchmark could not be tuned toward a
@@ -561,13 +699,14 @@ flattering result.
 
 ```
 uv sync
-uv run python test_cartpole.py && uv run python test_acrobot.py && uv run python test_ppo.py && uv run python test_dqn.py
+uv run python test_cartpole.py && uv run python test_acrobot.py && uv run python test_ppo.py && uv run python test_dqn.py && uv run python test_es.py
 uv run bench.py        # v1: environment throughput sweep, ~3 min
 uv run bench_ppo.py    # v2: PPO wall-clock to solve sweep, ~6 min
 uv run bench_kernel.py # v3: Metal kernel vs compiled step, ~3 min
 uv run bench_acrobot.py --max-exp 18  # v4: the heavier body, ~4 min
 uv run bench_lr.py     # v5: hyperparameter rules against N in PPO, ~40 min
 uv run bench_dqn.py    # v6: DQN, environment on GPU vs CPU, ~20 min
+uv run bench_es.py     # v7: Evolution Strategies on three backends, ~45 min
 uv run ppo.py --n 256  # one PPO run with a per-iteration log
 ```
 
@@ -594,6 +733,10 @@ uv run ppo.py --n 256  # one PPO run with a per-iteration log
   diagnostic arms, all as configurations of `ppo.py`.
 - `dqn.py`, `test_dqn.py`, `bench_dqn.py`: v6, DQN with the replay buffer
   on the GPU, its tests, and the sweep with a batch-size axis.
+- `es.py`, `cartpole_rollout_metal.py`, `test_es.py`, `bench_es.py`: v7,
+  Evolution Strategies on three backends, the whole-rollout kernel, tests
+  including kernel-versus-loop agreement, and the sweep with a step-size
+  axis.
 - `test_ppo.py`: GAE against a scalar reference, log-prob and entropy against
   numpy, and one short end-to-end learning check.
 - `results/`: CSVs and plots from the runs above, and the first v1 sweep with
@@ -607,7 +750,6 @@ hand-written Metal kernel against the compiled step. v4: the same three
 implementations on a body with eight times the arithmetic. v5: the standard
 hyperparameter rules against N in PPO, and two diagnostics for why none of
 them work. v6: DQN, the off-policy learner, with a batch-size diagnostic.
-Each shipped complete. Not here: the kernel inside a learner (no learner
-here reads fast enough for it to matter), bodies heavier than Acrobot,
-gradient-free population methods, the one kind of learner that could
-consume a billion steps per second.
+v7: Evolution Strategies with the whole rollout as one kernel, the learner
+that consumes the environment. Each shipped complete. Not here: bodies
+heavier than Acrobot, ES on Acrobot, anything beyond one machine.
