@@ -329,6 +329,109 @@ same device inside the timed loop. Full data in `results/acrobot.csv`;
 - The flop counts are hand counts of the Python source with constant folding
   and are approximate.
 
+## v5: can large N be made to pay in PPO?
+
+No. Not with the standard remedies, and not for the reason I expected.
+
+![PPO seconds and environment steps to solve against N under four hyperparameter rules](results/lr.png)
+
+v2 left a loose end: with fixed hyperparameters PPO needed about ten
+iterations to solve CartPole regardless of N, so every environment past
+N ≈ 256 was pure cost. v5 sweeps the three standard remedies against that
+baseline, on the GPU environment, same solved criterion, five seeds:
+learning rate scaled with √N (Hoffer et al.), learning rate scaled linearly
+with N (Goyal et al.), and a fixed 2,048-sample minibatch so gradient steps
+per sample stay constant. All four rules coincide at N = 256, which anchors
+the sweep.
+
+- **No rule beats the fixed baseline in wall-clock at any N.** The overall
+  minimum is unchanged: N = 256, a tenth of a second. Sqrt scaling costs
+  1.3x to 1.6x the baseline's median time, fixed minibatches about 2x.
+  Linear scaling matches the baseline to N = 4,096, loses a seed at 16,384,
+  and destroys the policy at 65,536, where four of five seeds sit at the
+  untrained score after the full budget.
+- **What the rules buy is robustness, not speed.** At N = 65,536 the
+  baseline's five seeds took between 8 and 110 seconds; sqrt's took 11 to
+  19, minibatch's 22 to 28. A five to ten times smaller spread, for about
+  twice the median.
+- **The iteration count is the invariant.** Median iterations to solve over
+  solved seeds:
+
+  | N | fixed | sqrt | linear | minibatch |
+  |--:|--:|--:|--:|--:|
+  | 256 | 7 | 7 | 7 | 7 |
+  | 1,024 | 11 | 20 | 19 | 20 |
+  | 4,096 | 11 | 19 | 12 | 11 |
+  | 16,384 | 10 | 13 | 26 | 11 |
+  | 65,536 | 10 | 16 | 101 | 8 |
+
+  Ten iterations at every N above 256 for the baseline, and no rule cuts
+  that below 8 anywhere. Not a 16x larger learning rate, not 256x more
+  gradient steps per iteration.
+- **It is not the clip, and it is not the window.** Two diagnostic arms,
+  in `results/lr_diag.csv`: the minibatch rule with clip 0.5 instead of 0.2,
+  so a wider trust region with thousands of steps to reach it, and the
+  baseline with a 128-step rollout window instead of 32.
+
+| N | fixed: iterations | clip0.5: iterations | window128: iterations |
+|--:|--:|--:|--:|
+| 4,096 | 11 | 11 | 11 |
+| 16,384 | 10 | 11 | 11 |
+| 65,536 | 10 | 12 | 7 |
+
+  Neither moves the floor. The wider clip still takes 11 to 12. The longer
+  window still takes 11, and 7 at N = 65,536 only with two of five seeds
+  failing and four times the samples per iteration.
+- **What is left is on-policy data collection itself.** Each iteration can
+  only teach the policy about states its current competence reaches,
+  because the episode ends where competence ends. CartPole appears to need
+  about ten rounds of act-then-learn, and nothing inside one round, not step
+  size, not step count, not trust region, not window length, substitutes for
+  the next round's data. That is the remaining hypothesis. It was not tested
+  further.
+- **So the right N for PPO here is the smallest one whose gradient is good
+  enough, about 256 to 1,024.** More environments buy variance reduction and
+  nothing else. The 20x environment from v1 and the 1.2 billion steps per
+  second from v3 have nowhere to go in this algorithm on this task. They
+  would matter for a method that reuses data, or for a task where one round
+  of data is the expensive part.
+
+### Tables
+
+Same machine and conditions. Seconds are training time, median over solved
+seeds; unsolved seeds are counted. `uv run bench_lr.py` regenerates the main
+sweep in about 40 minutes. The diagnostic arms are
+`uv run bench_lr.py --rules fixed clip0.5 window128 --ns 4096 16384 65536 --out lr_diag`.
+
+| N | fixed: s to solve | fixed: steps to solve | solved | sqrt: s to solve | sqrt: steps to solve | solved | linear: s to solve | linear: steps to solve | solved | minibatch: s to solve | minibatch: steps to solve | solved |
+|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| 256 | 0.1 | 57,344 | 5/5 | 0.1 | 57,344 | 5/5 | 0.1 | 57,344 | 5/5 | 0.1 | 57,344 | 5/5 |
+| 1,024 | 0.3 | 360,448 | 5/5 | 0.6 | 655,360 | 5/5 | 0.5 | 622,592 | 5/5 | 0.9 | 655,360 | 5/5 |
+| 4,096 | 0.9 | 1,441,792 | 5/5 | 1.5 | 2,490,368 | 5/5 | 0.9 | 1,572,864 | 5/5 | 2.0 | 1,441,792 | 5/5 |
+| 16,384 | 3.0 | 5,242,880 | 5/5 | 3.7 | 6,815,744 | 5/5 | 7.4 | 13,631,488 | 4/5 | 7.6 | 5,767,168 | 5/5 |
+| 65,536 | 11.8 | 20,971,520 | 5/5 | 18.2 | 33,554,432 | 5/5 | 115.2 | 211,812,352 | 1/5 | 22.2 | 16,777,216 | 5/5 |
+
+Diagnostic arms:
+
+| N | fixed: s to solve | fixed: steps to solve | solved | clip0.5: s to solve | clip0.5: steps to solve | solved | window128: s to solve | window128: steps to solve | solved |
+|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| 4,096 | 0.9 | 1,441,792 | 5/5 | 2.0 | 1,441,792 | 5/5 | 3.3 | 5,767,168 | 5/5 |
+| 16,384 | 2.9 | 5,242,880 | 5/5 | 7.8 | 5,767,168 | 5/5 | 12.8 | 23,068,672 | 5/5 |
+| 65,536 | 11.9 | 20,971,520 | 5/5 | 33.2 | 25,165,824 | 5/5 | 33.6 | 58,720,256 | 3/5 |
+
+### v5 methodology
+
+- **Every rule is a plain configuration of `ppo.py`**; no training code
+  changed. Reference N is 256, the v2 sweet spot. The fixed minibatch is
+  2,048 samples, exactly v2's minibatch at N = 256.
+- Same clock, same solved criterion, same 120 s budget as v2.
+- **At N = 1,024 the differences between rules are within seed noise**; the
+  per-seed dots on the plot overlap. The conclusions rest on N ≥ 4,096.
+- The fixed-minibatch rule at N = 65,536 runs 4,096 gradient steps per
+  iteration, each followed by an eval, and costs only 2.3x the 16-step
+  baseline per iteration, because a 2,048-sample step is mostly launch
+  overhead.
+
 ## v1 methodology
 
 Fixed before any number existed, so the benchmark could not be tuned toward a
@@ -377,6 +480,7 @@ uv run bench.py        # v1: environment throughput sweep, ~3 min
 uv run bench_ppo.py    # v2: PPO wall-clock to solve sweep, ~6 min
 uv run bench_kernel.py # v3: Metal kernel vs compiled step, ~3 min
 uv run bench_acrobot.py --max-exp 18  # v4: the heavier body, ~4 min
+uv run bench_lr.py     # v5: hyperparameter rules against N in PPO, ~40 min
 uv run ppo.py --n 256  # one PPO run with a per-iteration log
 ```
 
@@ -399,6 +503,8 @@ uv run ppo.py --n 256  # one PPO run with a per-iteration log
 - `acrobot_np.py`, `acrobot_mlx.py`, `acrobot_metal.py`, `test_acrobot.py`,
   `bench_acrobot.py`: v4, the same three implementations, tests and sweep
   for the heavier body.
+- `bench_lr.py`: v5, hyperparameter rules against N, plus the two
+  diagnostic arms, all as configurations of `ppo.py`.
 - `test_ppo.py`: GAE against a scalar reference, log-prob and entropy against
   numpy, and one short end-to-end learning check.
 - `results/`: CSVs and plots from the runs above, and the first v1 sweep with
@@ -409,7 +515,8 @@ uv run ppo.py --n 256  # one PPO run with a per-iteration log
 v1: one environment, two implementations, one throughput sweep. v2: PPO on
 it, environment on either device, wall-clock to solve. v3: the step as one
 hand-written Metal kernel against the compiled step. v4: the same three
-implementations on a body with eight times the arithmetic. Each shipped
-complete. Not here: per-N learning-rate scaling, the kernel inside PPO (v2
-showed the environment is not where PPO's time goes), bodies heavier than
-Acrobot.
+implementations on a body with eight times the arithmetic. v5: the standard
+hyperparameter rules against N in PPO, and two diagnostics for why none of
+them work. Each shipped complete. Not here: the kernel inside PPO (v2 showed
+the environment is not where PPO's time goes), bodies heavier than Acrobot,
+off-policy methods that could reuse what the environment can now produce.

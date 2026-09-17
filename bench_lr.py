@@ -17,6 +17,7 @@ to solve at large N beat the small-N optimum.
 
 import argparse
 import math
+import statistics
 
 import bench_ppo
 import ppo
@@ -29,7 +30,13 @@ RULES = {
     "sqrt": lambda n: ppo.Config(n=n, lr=BASE_LR * math.sqrt(n / N_REF)),
     "linear": lambda n: ppo.Config(n=n, lr=BASE_LR * n / N_REF),
     "minibatch": lambda n: ppo.Config(n=n, minibatches=max(1, n * STEPS // MINIBATCH)),
+    # Diagnostics for the iteration floor, run separately with --rules and --out.
+    # Is the floor PPO's clip (then a wider clip with plenty of gradient steps
+    # should cut iterations) or the 32-step window (then a longer window should)?
+    "clip0.5": lambda n: ppo.Config(n=n, minibatches=max(1, n * STEPS // MINIBATCH), clip=0.5),
+    "window128": lambda n: ppo.Config(n=n, steps=128),
 }
+MAIN_RULES = ["fixed", "sqrt", "linear", "minibatch"]
 
 
 def sweep(args):
@@ -47,12 +54,25 @@ def sweep(args):
     return rows
 
 
+def iterations_table(rows, ns, rules, seeds):
+    """Median iterations to solve over solved seeds: the number the whole question turns on."""
+    lines = ["| N | " + " | ".join(f"{r}: iterations" for r in rules) + " |", "|--:|" + "--:|" * len(rules)]
+    for n in ns:
+        cells = []
+        for rule in rules:
+            it = [r["iterations"] for r in rows if r["rule"] == rule and r["n"] == n and r["solved"]]
+            cells.append(f"{statistics.median(it):.0f}" if it else "—")
+        lines.append(f"| {n:,} | " + " | ".join(cells) + " |")
+    return "\n".join(lines)
+
+
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--ns", type=int, nargs="+", default=[256, 1024, 4096, 16384, 65536])
     p.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2, 3, 4])
-    p.add_argument("--rules", nargs="+", default=list(RULES), choices=list(RULES))
+    p.add_argument("--rules", nargs="+", default=MAIN_RULES, choices=list(RULES))
     p.add_argument("--time-budget", type=float, default=120.0)
+    p.add_argument("--out", default="lr", help="results file stem: results/<out>.csv and .png")
     return p.parse_args()
 
 
@@ -61,11 +81,13 @@ def main():
     RESULTS.mkdir(exist_ok=True)
     print(environment_line(), flush=True)
     rows = sweep(args)
-    bench_ppo.write_csv(rows, RESULTS / "lr.csv")
-    bench_ppo.plot(rows, args.ns, "rule", args.rules, RESULTS / "lr.png",
+    bench_ppo.write_csv(rows, RESULTS / f"{args.out}.csv")
+    bench_ppo.plot(rows, args.ns, "rule", args.rules, RESULTS / f"{args.out}.png",
                    "PPO on batched CartPole: hyperparameter rules against N. Apple M3 Pro")
     print()
     print(bench_ppo.markdown_table(rows, args.ns, "rule", args.rules, args.seeds))
+    print()
+    print(iterations_table(rows, args.ns, args.rules, args.seeds))
     print()
     print(f"steps/window={STEPS} epochs=4 base_lr={BASE_LR} n_ref={N_REF} fixed_minibatch={MINIBATCH} "
           f"time_budget={args.time_budget}s seeds={args.seeds}")
