@@ -14,7 +14,7 @@ hardware. Nobody had for Metal.
 
 ## Results at a glance
 
-Ten versions, each one question, each asked because of the previous
+Eleven versions, each one question, each asked because of the previous
 answer. Every number is the median of repeated runs on the same M3 Pro and
 can be regenerated with one command; the section for each version carries
 its table, its plot and its own methodology.
@@ -31,15 +31,17 @@ its table, its plot and its own methodology.
 | v8 | The same on the heavier body? | Faster than CartPole; population size still buys nothing | Acrobot in 11 to 20 ms, 7.8 ms with a larger step |
 | v9 | How heavy can a body get? | The GPU pays for arithmetic from Acrobot's weight up, but numpy does too | ~100x at any weight; the kernel beats numpy at N = 1 for every body |
 | v10 | Does a SIMD-cooperative solve rescue heavy bodies? | Only with few environments; at large N the per-thread state is the bound | 2x at N = 256, 0.4x at N = 65,536 for K = 16 |
+| v11 | Does changing the algorithm beat changing the kernel? | Yes: an O(K) formulation with O(K) state per thread | 5.6x at K = 16; runs to K = 64 where a mass matrix cannot |
 
-Three things held across all ten:
+Three things held across all eleven:
 
 - **The arithmetic is never the cost, until the body weighs as much as
-  Acrobot.** Memory layout (v1), launch count and memory traffic (v3), body
-  complexity being free on the GPU (v4) and per-step weight reads (v8) each
-  moved the numbers by 1.6x to 4x; flops did not, until v9 pushed a body
-  past Acrobot's weight, where both devices pay for them in the same
-  proportion.
+  Acrobot; past that, the algorithm is.** Memory layout (v1), launch count
+  and memory traffic (v3), body complexity being free on the GPU (v4) and
+  per-step weight reads (v8) each moved the numbers by 1.6x to 4x; flops
+  did not, until v9 pushed a body past Acrobot's weight. There, no kernel
+  trick moved a heavy body by more than a tenth (v10), and an O(K)
+  formulation moved it 5.6x (v11).
 - **Gradient learners are bounded by their own read rate, not by the
   environment.** PPO reads a fixed number of samples per iteration (v2, v5),
   DQN a fixed batch per gradient step (v6); neither can use more than a
@@ -1224,11 +1226,235 @@ v9 kernel with pairwise trig as a reference.
 - The two memory-placement variants were measured in a scratch script at
   N = 65,536 and are not in the repository.
 
+## v11: does changing the algorithm beat changing the kernel?
+
+Yes, by more than every kernel change in v10 put together. Featherstone's
+articulated-body algorithm computes the chain's accelerations in O(K)
+without ever forming the mass matrix, and its kernel is **5.6x faster than
+the mass-matrix kernel at K = 16**, 68M steps per second against 12M, with
+O(K) state per thread instead of O(K²). It also runs at K = 32 and 64, where
+one thread cannot hold a mass matrix at all.
+
+![K-link pendulum: articulated-body and mass-matrix kernels, numpy and compiled MLX, peak throughput against body size](results/aba.png)
+
+Three passes over the links, each O(1) per link: outward for link
+velocities and velocity-product bias forces, inward accumulating each
+link's articulated inertia and bias force into its parent, outward again
+for accelerations. Planar spatial algebra, 3-vectors and 3×3 inertias,
+relative joint coordinates, gravity as a base acceleration. Same three
+implementations as before; the numpy and MLX versions share one generic
+function, the kernel stores seven floats per link and recomputes the rest.
+
+- **The formulation is the lever.** At K = 16 the O(K) kernel is 5.6x the
+  mass-matrix kernel re-run in the same session, at K = 8 2x, at K = 4
+  1.55x; at K = 2 it is 0.73x, three passes of 3×3 algebra costing more
+  than a 2×2 solve. v10's cooperative solve, trig identity and memory
+  placement, all applied to the same O(K³) formulation, moved K = 16 by
+  at most a tenth.
+- **It scales.** The kernel's peak falls 671M, 450M, 184M, 68M, 18M, 5.8M
+  steps per second from K = 2 to 64, flops per step growing exactly
+  linearly. Past K = 8 the fall is steeper than the flops, 0.27x to 0.37x
+  per doubling against 0.5x, because per-thread state grows with K too,
+  about 900 floats at K = 64. At K = 16 the kernel sustains about 600
+  GFLOPS of this arithmetic, three times the mass-matrix kernel's; at
+  K = 64, about 210.
+- **numpy gains from it as well**, 2.3x at K = 16, so the GPU's lead stays
+  between 150x and 220x at N = 65,536 up to K = 16 and falls to 118x and
+  47x at 32 and 64 as the kernel's occupancy drops. The kernel beats numpy
+  at N = 1 for every K: at K = 64 it takes 220 µs per step to numpy's
+  11 ms, which is Python overhead across 15,000 array calls, not the CPU.
+- **Compiled MLX runs the O(K) formulation at every K but 2**, 5x to 10x
+  behind the kernel. At K = 2 the whole step is elementwise, `mx.compile`
+  fuses all of it into one Metal kernel, and that kernel needs more
+  argument buffers than Metal allows; from K = 4 the stacking ops break the
+  fusion into several kernels and it compiles. The sweep probes each K and
+  drops the configuration where it fails.
+- **Session variance, stated.** The mass-matrix kernel at K = 2 measured
+  925M steps per second here and 751M in v10's session, a 23% difference
+  for the one configuration that is pure launch overhead. References are
+  re-run in-session for this reason; ratios within a table are the
+  reliable quantity.
+
+### Tables
+
+Same machine, conditions and parameters as v9 and v10, with K to 64.
+`results/aba.csv`; `uv run bench_aba.py` regenerates it in about 35
+minutes.
+
+| K | flops / step | numpy (articulated body): peak steps/s | articulated-body kernel, eval every step: peak steps/s | articulated-body kernel, eval every 32: peak steps/s | mass-matrix kernel (v10), eval every 32: peak steps/s | mlx compiled (articulated body), eval every 32: peak steps/s | first N where the O(K) kernel (eval every 32) beats numpy |
+|--:|--:|--:|--:|--:|--:|--:|--:|
+| 2 | ~1,144 | 5,407,254 | 295,924,921 | 670,932,129 | 924,500,410 | — | 1 |
+| 4 | ~2,288 | 2,206,225 | 158,994,349 | 450,437,382 | 291,087,502 | 19,222,042 | 1 |
+| 8 | ~4,576 | 940,765 | 111,680,711 | 184,284,347 | 94,146,125 | 8,689,918 | 1 |
+| 16 | ~9,152 | 427,281 | 53,120,052 | 68,215,640 | 12,199,473 | 3,576,896 | 1 |
+| 32 | ~18,304 | 176,390 | 15,613,636 | 18,300,953 | — | 1,841,996 | 1 |
+| 64 | ~36,608 | 84,588 | 4,935,532 | 5,792,501 | — | 793,156 | 1 |
+
+<details><summary>K = 2, per N</summary>
+
+| N | numpy (articulated body) | articulated-body kernel, eval every step | articulated-body kernel, eval every 32 | mass-matrix kernel (v10), eval every 32 | best GPU / numpy |
+|--:|--:|--:|--:|--:|--:|
+| 1 | 4,074 | 3,934 | 21,423 | 20,523 | 5.26x |
+| 2 | 8,084 | 11,292 | 46,614 | 45,639 | 5.77x |
+| 4 | 16,140 | 21,325 | 94,818 | 92,081 | 5.87x |
+| 8 | 32,246 | 34,288 | 184,851 | 182,672 | 5.73x |
+| 16 | 64,619 | 79,625 | 349,021 | 375,740 | 5.81x |
+| 32 | 128,013 | 158,951 | 704,436 | 734,719 | 5.74x |
+| 64 | 249,933 | 321,670 | 1,376,865 | 1,451,046 | 5.81x |
+| 128 | 470,220 | 684,182 | 2,760,069 | 2,888,534 | 6.14x |
+| 256 | 843,590 | 1,362,122 | 5,629,192 | 5,791,616 | 6.87x |
+| 512 | 1,453,242 | 2,738,216 | 11,048,341 | 11,633,955 | 8.01x |
+| 1,024 | 2,474,010 | 5,320,290 | 22,042,799 | 23,148,395 | 9.36x |
+| 2,048 | 3,696,977 | 10,647,279 | 41,907,836 | 45,666,379 | 12.35x |
+| 4,096 | 4,748,778 | 21,541,583 | 80,959,642 | 90,760,908 | 19.11x |
+| 8,192 | 5,407,254 | 42,871,058 | 136,345,468 | 173,912,411 | 32.16x |
+| 16,384 | 4,786,600 | 83,369,748 | 224,302,342 | 249,906,402 | 52.21x |
+| 32,768 | 4,670,956 | 159,854,563 | 445,121,286 | 371,453,996 | 95.30x |
+| 65,536 | 4,589,703 | 295,924,921 | 670,932,129 | 924,500,410 | 201.43x |
+
+</details>
+
+<details><summary>K = 4, per N</summary>
+
+| N | numpy (articulated body) | mlx compiled (articulated body), eval every 32 | articulated-body kernel, eval every step | articulated-body kernel, eval every 32 | mass-matrix kernel (v10), eval every 32 | best GPU / numpy |
+|--:|--:|--:|--:|--:|--:|--:|
+| 1 | 1,723 | 674 | 3,777 | 14,924 | 15,175 | 8.81x |
+| 2 | 3,442 | 1,357 | 8,725 | 31,553 | 32,048 | 9.31x |
+| 4 | 6,873 | 2,701 | 17,919 | 53,744 | 67,831 | 9.87x |
+| 8 | 13,511 | 5,374 | 29,298 | 94,028 | 138,611 | 10.26x |
+| 16 | 26,649 | 10,534 | 68,634 | 185,148 | 273,191 | 10.25x |
+| 32 | 53,004 | 20,435 | 144,188 | 374,951 | 524,585 | 9.90x |
+| 64 | 105,852 | 38,530 | 272,445 | 871,497 | 983,679 | 9.29x |
+| 128 | 198,905 | 74,763 | 555,957 | 1,689,319 | 2,017,630 | 10.14x |
+| 256 | 355,371 | 143,973 | 1,101,303 | 3,483,641 | 4,049,056 | 11.39x |
+| 512 | 615,041 | 283,396 | 2,307,450 | 6,728,024 | 8,267,874 | 13.44x |
+| 1,024 | 1,051,026 | 560,043 | 4,310,834 | 13,677,197 | 16,620,143 | 15.81x |
+| 2,048 | 1,521,682 | 1,083,123 | 8,910,123 | 31,041,018 | 30,712,505 | 20.40x |
+| 4,096 | 1,876,835 | 2,162,021 | 17,647,250 | 62,864,901 | 62,155,650 | 33.50x |
+| 8,192 | 2,206,225 | 4,311,580 | 35,439,730 | 107,413,132 | 115,662,389 | 52.43x |
+| 16,384 | 1,575,607 | 7,993,388 | 65,574,595 | 157,474,393 | 180,755,216 | 114.72x |
+| 32,768 | 2,082,982 | 16,509,243 | 120,492,503 | 245,527,412 | 238,263,097 | 117.87x |
+| 65,536 | 2,115,578 | 19,222,042 | 158,994,349 | 450,437,382 | 291,087,502 | 212.91x |
+
+</details>
+
+<details><summary>K = 8, per N</summary>
+
+| N | numpy (articulated body) | mlx compiled (articulated body), eval every 32 | articulated-body kernel, eval every step | articulated-body kernel, eval every 32 | mass-matrix kernel (v10), eval every 32 | best GPU / numpy |
+|--:|--:|--:|--:|--:|--:|--:|
+| 1 | 800 | 225 | 3,626 | 11,322 | 8,685 | 14.15x |
+| 2 | 1,618 | 415 | 7,786 | 24,702 | 16,683 | 15.27x |
+| 4 | 3,218 | 821 | 14,343 | 49,341 | 34,164 | 15.33x |
+| 8 | 6,304 | 1,676 | 28,545 | 62,682 | 71,190 | 11.29x |
+| 16 | 12,634 | 3,360 | 59,404 | 175,591 | 142,424 | 13.90x |
+| 32 | 25,020 | 5,840 | 111,878 | 389,181 | 280,936 | 15.55x |
+| 64 | 49,166 | 11,800 | 217,176 | 667,586 | 560,526 | 13.58x |
+| 128 | 92,348 | 22,658 | 435,554 | 1,297,160 | 1,122,595 | 14.05x |
+| 256 | 160,763 | 46,533 | 953,894 | 2,858,984 | 2,259,979 | 17.78x |
+| 512 | 277,045 | 91,224 | 1,743,875 | 5,397,834 | 4,587,910 | 19.48x |
+| 1,024 | 452,102 | 180,727 | 3,305,767 | 11,545,142 | 9,153,552 | 25.54x |
+| 2,048 | 671,902 | 346,582 | 6,819,829 | 22,145,527 | 18,100,742 | 32.96x |
+| 4,096 | 858,259 | 681,389 | 14,523,179 | 45,289,640 | 34,843,167 | 52.77x |
+| 8,192 | 940,765 | 1,358,848 | 28,513,801 | 83,058,274 | 65,067,982 | 88.29x |
+| 16,384 | 720,690 | 2,888,534 | 49,817,828 | 120,319,692 | 75,869,689 | 166.95x |
+| 32,768 | 879,549 | 6,010,189 | 78,410,907 | 165,341,090 | 85,394,864 | 187.98x |
+| 65,536 | 927,980 | 8,689,918 | 111,680,711 | 184,284,347 | 94,146,125 | 198.59x |
+
+</details>
+
+<details><summary>K = 16, per N</summary>
+
+| N | numpy (articulated body) | mlx compiled (articulated body), eval every 32 | articulated-body kernel, eval every step | articulated-body kernel, eval every 32 | mass-matrix kernel (v10), eval every 32 | best GPU / numpy |
+|--:|--:|--:|--:|--:|--:|--:|
+| 1 | 394 | 76 | 3,384 | 10,323 | 2,508 | 26.20x |
+| 2 | 786 | 139 | 6,983 | 21,748 | 4,993 | 27.67x |
+| 4 | 1,578 | 278 | 13,784 | 41,656 | 10,124 | 26.40x |
+| 8 | 3,025 | 657 | 27,257 | 80,582 | 20,376 | 26.64x |
+| 16 | 6,271 | 1,545 | 55,493 | 171,289 | 40,504 | 27.31x |
+| 32 | 12,439 | 3,721 | 108,364 | 328,109 | 80,451 | 26.38x |
+| 64 | 24,312 | 7,792 | 219,765 | 665,448 | 161,824 | 27.37x |
+| 128 | 46,542 | 15,034 | 419,933 | 1,355,039 | 319,871 | 29.11x |
+| 256 | 81,471 | 29,543 | 840,062 | 2,400,674 | 506,390 | 29.47x |
+| 512 | 137,781 | 56,718 | 1,630,337 | 4,973,641 | 1,016,686 | 36.10x |
+| 1,024 | 228,097 | 110,402 | 3,153,751 | 9,584,673 | 2,007,338 | 42.02x |
+| 2,048 | 349,717 | 211,511 | 6,507,667 | 17,569,288 | 3,843,096 | 50.24x |
+| 4,096 | 425,905 | 413,393 | 12,159,000 | 30,426,138 | 6,751,054 | 71.44x |
+| 8,192 | 427,281 | 780,006 | 20,648,271 | 48,002,196 | 8,721,460 | 112.34x |
+| 16,384 | 287,414 | 1,441,649 | 30,695,870 | 52,591,397 | 10,096,709 | 182.98x |
+| 32,768 | 395,936 | 2,726,264 | 40,663,922 | 59,909,000 | 11,285,601 | 151.31x |
+| 65,536 | 311,783 | 3,576,896 | 53,120,052 | 68,215,640 | 12,199,473 | 218.79x |
+
+</details>
+
+<details><summary>K = 32, per N</summary>
+
+| N | numpy (articulated body) | mlx compiled (articulated body), eval every 32 | articulated-body kernel, eval every step | articulated-body kernel, eval every 32 | best GPU / numpy |
+|--:|--:|--:|--:|--:|--:|
+| 1 | 186 | 45 | 2,208 | 6,329 | 34.03x |
+| 2 | 373 | 104 | 5,780 | 13,405 | 35.94x |
+| 4 | 744 | 209 | 11,981 | 26,393 | 35.47x |
+| 8 | 1,461 | 434 | 23,340 | 50,564 | 34.61x |
+| 16 | 2,978 | 799 | 45,874 | 103,684 | 34.82x |
+| 32 | 5,904 | 1,548 | 93,304 | 210,104 | 35.59x |
+| 64 | 11,323 | 3,054 | 182,156 | 415,656 | 36.71x |
+| 128 | 21,994 | 5,889 | 364,210 | 735,916 | 33.46x |
+| 256 | 38,171 | 11,180 | 651,830 | 1,343,883 | 35.21x |
+| 512 | 64,571 | 23,607 | 1,289,567 | 2,658,086 | 41.17x |
+| 1,024 | 104,078 | 46,075 | 2,625,299 | 5,348,404 | 51.39x |
+| 2,048 | 155,440 | 79,008 | 5,348,086 | 10,468,312 | 67.35x |
+| 4,096 | 166,333 | 168,777 | 10,162,869 | 17,206,224 | 103.44x |
+| 8,192 | 176,390 | 336,462 | 12,534,629 | 18,300,953 | 103.75x |
+| 16,384 | 93,358 | 780,324 | 13,724,779 | 17,483,879 | 187.28x |
+| 32,768 | 111,974 | 1,577,566 | 14,893,558 | 17,472,311 | 156.04x |
+| 65,536 | 150,518 | 1,841,996 | 15,613,636 | 17,807,725 | 118.31x |
+
+</details>
+
+<details><summary>K = 64, per N</summary>
+
+| N | numpy (articulated body) | mlx compiled (articulated body), eval every 32 | articulated-body kernel, eval every step | articulated-body kernel, eval every 32 | best GPU / numpy |
+|--:|--:|--:|--:|--:|--:|
+| 1 | 93 | 26 | 2,305 | 4,509 | 48.48x |
+| 2 | 186 | 51 | 4,789 | 9,006 | 48.42x |
+| 4 | 373 | 103 | 9,677 | 18,079 | 48.47x |
+| 8 | 738 | 207 | 18,874 | 34,662 | 46.97x |
+| 16 | 1,443 | 419 | 37,647 | 68,875 | 47.73x |
+| 32 | 2,910 | 766 | 75,481 | 138,837 | 47.71x |
+| 64 | 5,713 | 1,561 | 149,426 | 283,963 | 49.70x |
+| 128 | 10,666 | 3,138 | 264,188 | 469,822 | 44.05x |
+| 256 | 17,580 | 6,206 | 470,783 | 712,705 | 40.54x |
+| 512 | 30,887 | 12,108 | 996,003 | 1,528,088 | 49.47x |
+| 1,024 | 51,263 | 23,177 | 1,093,175 | 3,059,184 | 59.68x |
+| 2,048 | 63,302 | 44,418 | 1,089,573 | 4,635,990 | 73.24x |
+| 4,096 | 70,020 | 86,624 | 4,935,532 | 5,792,501 | 82.73x |
+| 8,192 | 77,872 | 181,193 | 3,752,380 | 4,448,651 | 57.13x |
+| 16,384 | 48,025 | 388,185 | 3,884,416 | 4,145,115 | 86.31x |
+| 32,768 | 54,375 | 648,483 | 3,894,883 | 4,134,353 | 76.03x |
+| 65,536 | 84,588 | 793,156 | 3,863,401 | 3,961,767 | 46.84x |
+
+</details>
+
+### v11 methodology
+
+- **Checked against the mass matrix.** The O(K) recursion and the O(K³)
+  solve are two derivations of the same equations; the accelerations agree
+  to a few parts in a million at every K from 2 to 16 on random folded
+  configurations, and the single-link closed form exactly.
+- **Past K = 16 there is no oracle**, so energy conservation without torque
+  is the check: RK4 at the time step of 0.02 drifts under 1% at K = 16, 3%
+  at K = 32 and 10% at K = 64 over ten simulated seconds. The step is too
+  coarse for a trustworthy 64-link simulation; it does not change the
+  arithmetic per step, which is what the sweep measures.
+- **Both ports agree with numpy** to 1e-3 at every K from 2 to 64, and the
+  kernel's resets and a 100-step lazy chain are checked as before.
+- The flop count is a hand count of about 140 per link per stage and is
+  approximate.
+
 ## Reproduce
 
 ```
 uv sync
-uv run python test_cartpole.py && uv run python test_acrobot.py && uv run python test_pendulum.py && uv run python test_ppo.py && uv run python test_dqn.py && uv run python test_es.py
+uv run python test_cartpole.py && uv run python test_acrobot.py && uv run python test_pendulum.py && uv run python test_pendulum_aba.py && uv run python test_ppo.py && uv run python test_dqn.py && uv run python test_es.py
 uv run bench.py        # v1: environment throughput sweep, ~3 min
 uv run bench_ppo.py    # v2: PPO wall-clock to solve sweep, ~6 min
 uv run bench_kernel.py # v3: Metal kernel vs compiled step, ~3 min
@@ -1237,7 +1463,8 @@ uv run bench_lr.py     # v5: hyperparameter rules against N in PPO, ~40 min
 uv run bench_dqn.py    # v6: DQN, environment on GPU vs CPU, ~20 min
 uv run bench_es.py     # v7: Evolution Strategies on three backends, ~45 min
 uv run bench_es.py --task acrobot --time-budget 300  # v8: the same on Acrobot, ~25 min
-uv run bench_pendulum.py  # v9: the K-link pendulum, body size as the axis, ~40 min
+uv run bench_pendulum.py  # v9/v10: the K-link pendulum, body size as the axis, ~50 min
+uv run bench_aba.py       # v11: the articulated-body formulation to K = 64, ~35 min
 uv run ppo.py --n 256  # one PPO run with a per-iteration log
 ```
 
@@ -1269,6 +1496,10 @@ uv run ppo.py --n 256  # one PPO run with a per-iteration log
   v10, the K-link pendulum in all three implementations plus the
   SIMD-cooperative kernel, its oracle, energy and parity tests, and the
   sweep with body size as the axis.
+- `pendulum_aba_np.py`, `pendulum_aba_mlx.py`, `pendulum_aba_metal.py`,
+  `test_pendulum_aba.py`, `bench_aba.py`: v11, the same body by
+  Featherstone's articulated-body algorithm in all three implementations,
+  checked against the mass-matrix version, and its sweep to K = 64.
 - `es.py`, `cartpole_rollout_metal.py`, `acrobot_rollout_metal.py`,
   `test_es.py`, `bench_es.py`: v7 and v8, Evolution Strategies on three
   backends for either task, the two whole-rollout kernels, tests including
@@ -1291,5 +1522,6 @@ v7: Evolution Strategies with the whole rollout as one kernel, the learner
 that consumes the environment. v8: the same on Acrobot. v9: a K-link
 pendulum with body size as the knob, to a hundred times CartPole's
 arithmetic. v10: a SIMD-cooperative solve for it, which wins only with few
-environments. Each shipped complete. Not here: an O(K) articulated-body
-formulation of the chain, contacts, anything beyond one machine.
+environments. v11: the O(K) articulated-body formulation, which wins
+outright. Each shipped complete. Not here: contacts, three dimensions,
+anything beyond one machine.

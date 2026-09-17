@@ -1,0 +1,460 @@
+k,config,n,steps_per_sec,iters,warmup,repeats
+2,numpy (articulated body),1,4074,64,8,3
+2,numpy (articulated body),2,8084,64,8,3
+2,numpy (articulated body),4,16140,64,8,3
+2,numpy (articulated body),8,32246,64,8,3
+2,numpy (articulated body),16,64619,64,8,3
+2,numpy (articulated body),32,128013,64,8,3
+2,numpy (articulated body),64,249933,64,8,3
+2,numpy (articulated body),128,470220,64,8,3
+2,numpy (articulated body),256,843590,64,8,3
+2,numpy (articulated body),512,1453242,64,8,3
+2,numpy (articulated body),1024,2474010,64,8,3
+2,numpy (articulated body),2048,3696977,64,8,3
+2,numpy (articulated body),4096,4748778,64,8,3
+2,numpy (articulated body),8192,5407254,64,8,3
+2,numpy (articulated body),16384,4786600,64,8,3
+2,numpy (articulated body),32768,4670956,64,8,3
+2,numpy (articulated body),65536,4589703,64,8,3
+2,"articulated-body kernel, eval every step",1,3934,64,8,3
+2,"articulated-body kernel, eval every step",2,11292,64,8,3
+2,"articulated-body kernel, eval every step",4,21325,64,8,3
+2,"articulated-body kernel, eval every step",8,34288,64,8,3
+2,"articulated-body kernel, eval every step",16,79625,64,8,3
+2,"articulated-body kernel, eval every step",32,158951,64,8,3
+2,"articulated-body kernel, eval every step",64,321670,64,8,3
+2,"articulated-body kernel, eval every step",128,684182,64,8,3
+2,"articulated-body kernel, eval every step",256,1362122,64,8,3
+2,"articulated-body kernel, eval every step",512,2738216,64,8,3
+2,"articulated-body kernel, eval every step",1024,5320290,64,8,3
+2,"articulated-body kernel, eval every step",2048,10647279,64,8,3
+2,"articulated-body kernel, eval every step",4096,21541583,64,8,3
+2,"articulated-body kernel, eval every step",8192,42871058,64,8,3
+2,"articulated-body kernel, eval every step",16384,83369748,64,8,3
+2,"articulated-body kernel, eval every step",32768,159854563,64,8,3
+2,"articulated-body kernel, eval every step",65536,295924921,64,8,3
+2,"articulated-body kernel, eval every 32",1,21423,64,8,3
+2,"articulated-body kernel, eval every 32",2,46614,64,8,3
+2,"articulated-body kernel, eval every 32",4,94818,64,8,3
+2,"articulated-body kernel, eval every 32",8,184851,64,8,3
+2,"articulated-body kernel, eval every 32",16,349021,64,8,3
+2,"articulated-body kernel, eval every 32",32,704436,64,8,3
+2,"articulated-body kernel, eval every 32",64,1376865,64,8,3
+2,"articulated-body kernel, eval every 32",128,2760069,64,8,3
+2,"articulated-body kernel, eval every 32",256,5629192,64,8,3
+2,"articulated-body kernel, eval every 32",512,11048341,64,8,3
+2,"articulated-body kernel, eval every 32",1024,22042799,64,8,3
+2,"articulated-body kernel, eval every 32",2048,41907836,64,8,3
+2,"articulated-body kernel, eval every 32",4096,80959642,64,8,3
+2,"articulated-body kernel, eval every 32",8192,136345468,64,8,3
+2,"articulated-body kernel, eval every 32",16384,224302342,64,8,3
+2,"articulated-body kernel, eval every 32",32768,445121286,64,8,3
+2,"articulated-body kernel, eval every 32",65536,670932129,64,8,3
+2,"mass-matrix kernel (v10), eval every 32",1,20523,64,8,3
+2,"mass-matrix kernel (v10), eval every 32",2,45639,64,8,3
+2,"mass-matrix kernel (v10), eval every 32",4,92081,64,8,3
+2,"mass-matrix kernel (v10), eval every 32",8,182672,64,8,3
+2,"mass-matrix kernel (v10), eval every 32",16,375740,64,8,3
+2,"mass-matrix kernel (v10), eval every 32",32,734719,64,8,3
+2,"mass-matrix kernel (v10), eval every 32",64,1451046,64,8,3
+2,"mass-matrix kernel (v10), eval every 32",128,2888534,64,8,3
+2,"mass-matrix kernel (v10), eval every 32",256,5791616,64,8,3
+2,"mass-matrix kernel (v10), eval every 32",512,11633955,64,8,3
+2,"mass-matrix kernel (v10), eval every 32",1024,23148395,64,8,3
+2,"mass-matrix kernel (v10), eval every 32",2048,45666379,64,8,3
+2,"mass-matrix kernel (v10), eval every 32",4096,90760908,64,8,3
+2,"mass-matrix kernel (v10), eval every 32",8192,173912411,64,8,3
+2,"mass-matrix kernel (v10), eval every 32",16384,249906402,64,8,3
+2,"mass-matrix kernel (v10), eval every 32",32768,371453996,64,8,3
+2,"mass-matrix kernel (v10), eval every 32",65536,924500410,64,8,3
+4,numpy (articulated body),1,1723,64,8,3
+4,numpy (articulated body),2,3442,64,8,3
+4,numpy (articulated body),4,6873,64,8,3
+4,numpy (articulated body),8,13511,64,8,3
+4,numpy (articulated body),16,26649,64,8,3
+4,numpy (articulated body),32,53004,64,8,3
+4,numpy (articulated body),64,105852,64,8,3
+4,numpy (articulated body),128,198905,64,8,3
+4,numpy (articulated body),256,355371,64,8,3
+4,numpy (articulated body),512,615041,64,8,3
+4,numpy (articulated body),1024,1051026,64,8,3
+4,numpy (articulated body),2048,1521682,64,8,3
+4,numpy (articulated body),4096,1876835,64,8,3
+4,numpy (articulated body),8192,2206225,64,8,3
+4,numpy (articulated body),16384,1575607,64,8,3
+4,numpy (articulated body),32768,2082982,64,8,3
+4,numpy (articulated body),65536,2115578,64,8,3
+4,"mlx compiled (articulated body), eval every 32",1,674,64,8,3
+4,"mlx compiled (articulated body), eval every 32",2,1357,64,8,3
+4,"mlx compiled (articulated body), eval every 32",4,2701,64,8,3
+4,"mlx compiled (articulated body), eval every 32",8,5374,64,8,3
+4,"mlx compiled (articulated body), eval every 32",16,10534,64,8,3
+4,"mlx compiled (articulated body), eval every 32",32,20435,64,8,3
+4,"mlx compiled (articulated body), eval every 32",64,38530,64,8,3
+4,"mlx compiled (articulated body), eval every 32",128,74763,64,8,3
+4,"mlx compiled (articulated body), eval every 32",256,143973,64,8,3
+4,"mlx compiled (articulated body), eval every 32",512,283396,64,8,3
+4,"mlx compiled (articulated body), eval every 32",1024,560043,64,8,3
+4,"mlx compiled (articulated body), eval every 32",2048,1083123,64,8,3
+4,"mlx compiled (articulated body), eval every 32",4096,2162021,64,8,3
+4,"mlx compiled (articulated body), eval every 32",8192,4311580,64,8,3
+4,"mlx compiled (articulated body), eval every 32",16384,7993388,64,8,3
+4,"mlx compiled (articulated body), eval every 32",32768,16509243,64,8,3
+4,"mlx compiled (articulated body), eval every 32",65536,19222042,64,8,3
+4,"articulated-body kernel, eval every step",1,3777,64,8,3
+4,"articulated-body kernel, eval every step",2,8725,64,8,3
+4,"articulated-body kernel, eval every step",4,17919,64,8,3
+4,"articulated-body kernel, eval every step",8,29298,64,8,3
+4,"articulated-body kernel, eval every step",16,68634,64,8,3
+4,"articulated-body kernel, eval every step",32,144188,64,8,3
+4,"articulated-body kernel, eval every step",64,272445,64,8,3
+4,"articulated-body kernel, eval every step",128,555957,64,8,3
+4,"articulated-body kernel, eval every step",256,1101303,64,8,3
+4,"articulated-body kernel, eval every step",512,2307450,64,8,3
+4,"articulated-body kernel, eval every step",1024,4310834,64,8,3
+4,"articulated-body kernel, eval every step",2048,8910123,64,8,3
+4,"articulated-body kernel, eval every step",4096,17647250,64,8,3
+4,"articulated-body kernel, eval every step",8192,35439730,64,8,3
+4,"articulated-body kernel, eval every step",16384,65574595,64,8,3
+4,"articulated-body kernel, eval every step",32768,120492503,64,8,3
+4,"articulated-body kernel, eval every step",65536,158994349,64,8,3
+4,"articulated-body kernel, eval every 32",1,14924,64,8,3
+4,"articulated-body kernel, eval every 32",2,31553,64,8,3
+4,"articulated-body kernel, eval every 32",4,53744,64,8,3
+4,"articulated-body kernel, eval every 32",8,94028,64,8,3
+4,"articulated-body kernel, eval every 32",16,185148,64,8,3
+4,"articulated-body kernel, eval every 32",32,374951,64,8,3
+4,"articulated-body kernel, eval every 32",64,871497,64,8,3
+4,"articulated-body kernel, eval every 32",128,1689319,64,8,3
+4,"articulated-body kernel, eval every 32",256,3483641,64,8,3
+4,"articulated-body kernel, eval every 32",512,6728024,64,8,3
+4,"articulated-body kernel, eval every 32",1024,13677197,64,8,3
+4,"articulated-body kernel, eval every 32",2048,31041018,64,8,3
+4,"articulated-body kernel, eval every 32",4096,62864901,64,8,3
+4,"articulated-body kernel, eval every 32",8192,107413132,64,8,3
+4,"articulated-body kernel, eval every 32",16384,157474393,64,8,3
+4,"articulated-body kernel, eval every 32",32768,245527412,64,8,3
+4,"articulated-body kernel, eval every 32",65536,450437382,64,8,3
+4,"mass-matrix kernel (v10), eval every 32",1,15175,64,8,3
+4,"mass-matrix kernel (v10), eval every 32",2,32048,64,8,3
+4,"mass-matrix kernel (v10), eval every 32",4,67831,64,8,3
+4,"mass-matrix kernel (v10), eval every 32",8,138611,64,8,3
+4,"mass-matrix kernel (v10), eval every 32",16,273191,64,8,3
+4,"mass-matrix kernel (v10), eval every 32",32,524585,64,8,3
+4,"mass-matrix kernel (v10), eval every 32",64,983679,64,8,3
+4,"mass-matrix kernel (v10), eval every 32",128,2017630,64,8,3
+4,"mass-matrix kernel (v10), eval every 32",256,4049056,64,8,3
+4,"mass-matrix kernel (v10), eval every 32",512,8267874,64,8,3
+4,"mass-matrix kernel (v10), eval every 32",1024,16620143,64,8,3
+4,"mass-matrix kernel (v10), eval every 32",2048,30712505,64,8,3
+4,"mass-matrix kernel (v10), eval every 32",4096,62155650,64,8,3
+4,"mass-matrix kernel (v10), eval every 32",8192,115662389,64,8,3
+4,"mass-matrix kernel (v10), eval every 32",16384,180755216,64,8,3
+4,"mass-matrix kernel (v10), eval every 32",32768,238263097,64,8,3
+4,"mass-matrix kernel (v10), eval every 32",65536,291087502,64,8,3
+8,numpy (articulated body),1,800,64,8,3
+8,numpy (articulated body),2,1618,64,8,3
+8,numpy (articulated body),4,3218,64,8,3
+8,numpy (articulated body),8,6304,64,8,3
+8,numpy (articulated body),16,12634,64,8,3
+8,numpy (articulated body),32,25020,64,8,3
+8,numpy (articulated body),64,49166,64,8,3
+8,numpy (articulated body),128,92348,64,8,3
+8,numpy (articulated body),256,160763,64,8,3
+8,numpy (articulated body),512,277045,64,8,3
+8,numpy (articulated body),1024,452102,64,8,3
+8,numpy (articulated body),2048,671902,64,8,3
+8,numpy (articulated body),4096,858259,64,8,3
+8,numpy (articulated body),8192,940765,64,8,3
+8,numpy (articulated body),16384,720690,64,8,3
+8,numpy (articulated body),32768,879549,64,8,3
+8,numpy (articulated body),65536,927980,64,8,3
+8,"mlx compiled (articulated body), eval every 32",1,225,64,8,3
+8,"mlx compiled (articulated body), eval every 32",2,415,64,8,3
+8,"mlx compiled (articulated body), eval every 32",4,821,64,8,3
+8,"mlx compiled (articulated body), eval every 32",8,1676,64,8,3
+8,"mlx compiled (articulated body), eval every 32",16,3360,64,8,3
+8,"mlx compiled (articulated body), eval every 32",32,5840,64,8,3
+8,"mlx compiled (articulated body), eval every 32",64,11800,64,8,3
+8,"mlx compiled (articulated body), eval every 32",128,22658,64,8,3
+8,"mlx compiled (articulated body), eval every 32",256,46533,64,8,3
+8,"mlx compiled (articulated body), eval every 32",512,91224,64,8,3
+8,"mlx compiled (articulated body), eval every 32",1024,180727,64,8,3
+8,"mlx compiled (articulated body), eval every 32",2048,346582,64,8,3
+8,"mlx compiled (articulated body), eval every 32",4096,681389,64,8,3
+8,"mlx compiled (articulated body), eval every 32",8192,1358848,64,8,3
+8,"mlx compiled (articulated body), eval every 32",16384,2888534,64,8,3
+8,"mlx compiled (articulated body), eval every 32",32768,6010189,64,8,3
+8,"mlx compiled (articulated body), eval every 32",65536,8689918,64,8,3
+8,"articulated-body kernel, eval every step",1,3626,64,8,3
+8,"articulated-body kernel, eval every step",2,7786,64,8,3
+8,"articulated-body kernel, eval every step",4,14343,64,8,3
+8,"articulated-body kernel, eval every step",8,28545,64,8,3
+8,"articulated-body kernel, eval every step",16,59404,64,8,3
+8,"articulated-body kernel, eval every step",32,111878,64,8,3
+8,"articulated-body kernel, eval every step",64,217176,64,8,3
+8,"articulated-body kernel, eval every step",128,435554,64,8,3
+8,"articulated-body kernel, eval every step",256,953894,64,8,3
+8,"articulated-body kernel, eval every step",512,1743875,64,8,3
+8,"articulated-body kernel, eval every step",1024,3305767,64,8,3
+8,"articulated-body kernel, eval every step",2048,6819829,64,8,3
+8,"articulated-body kernel, eval every step",4096,14523179,64,8,3
+8,"articulated-body kernel, eval every step",8192,28513801,64,8,3
+8,"articulated-body kernel, eval every step",16384,49817828,64,8,3
+8,"articulated-body kernel, eval every step",32768,78410907,64,8,3
+8,"articulated-body kernel, eval every step",65536,111680711,64,8,3
+8,"articulated-body kernel, eval every 32",1,11322,64,8,3
+8,"articulated-body kernel, eval every 32",2,24702,64,8,3
+8,"articulated-body kernel, eval every 32",4,49341,64,8,3
+8,"articulated-body kernel, eval every 32",8,62682,64,8,3
+8,"articulated-body kernel, eval every 32",16,175591,64,8,3
+8,"articulated-body kernel, eval every 32",32,389181,64,8,3
+8,"articulated-body kernel, eval every 32",64,667586,64,8,3
+8,"articulated-body kernel, eval every 32",128,1297160,64,8,3
+8,"articulated-body kernel, eval every 32",256,2858984,64,8,3
+8,"articulated-body kernel, eval every 32",512,5397834,64,8,3
+8,"articulated-body kernel, eval every 32",1024,11545142,64,8,3
+8,"articulated-body kernel, eval every 32",2048,22145527,64,8,3
+8,"articulated-body kernel, eval every 32",4096,45289640,64,8,3
+8,"articulated-body kernel, eval every 32",8192,83058274,64,8,3
+8,"articulated-body kernel, eval every 32",16384,120319692,64,8,3
+8,"articulated-body kernel, eval every 32",32768,165341090,64,8,3
+8,"articulated-body kernel, eval every 32",65536,184284347,64,8,3
+8,"mass-matrix kernel (v10), eval every 32",1,8685,64,8,3
+8,"mass-matrix kernel (v10), eval every 32",2,16683,64,8,3
+8,"mass-matrix kernel (v10), eval every 32",4,34164,64,8,3
+8,"mass-matrix kernel (v10), eval every 32",8,71190,64,8,3
+8,"mass-matrix kernel (v10), eval every 32",16,142424,64,8,3
+8,"mass-matrix kernel (v10), eval every 32",32,280936,64,8,3
+8,"mass-matrix kernel (v10), eval every 32",64,560526,64,8,3
+8,"mass-matrix kernel (v10), eval every 32",128,1122595,64,8,3
+8,"mass-matrix kernel (v10), eval every 32",256,2259979,64,8,3
+8,"mass-matrix kernel (v10), eval every 32",512,4587910,64,8,3
+8,"mass-matrix kernel (v10), eval every 32",1024,9153552,64,8,3
+8,"mass-matrix kernel (v10), eval every 32",2048,18100742,64,8,3
+8,"mass-matrix kernel (v10), eval every 32",4096,34843167,64,8,3
+8,"mass-matrix kernel (v10), eval every 32",8192,65067982,64,8,3
+8,"mass-matrix kernel (v10), eval every 32",16384,75869689,64,8,3
+8,"mass-matrix kernel (v10), eval every 32",32768,85394864,64,8,3
+8,"mass-matrix kernel (v10), eval every 32",65536,94146125,64,8,3
+16,numpy (articulated body),1,394,64,8,3
+16,numpy (articulated body),2,786,64,8,3
+16,numpy (articulated body),4,1578,64,8,3
+16,numpy (articulated body),8,3025,64,8,3
+16,numpy (articulated body),16,6271,64,8,3
+16,numpy (articulated body),32,12439,64,8,3
+16,numpy (articulated body),64,24312,64,8,3
+16,numpy (articulated body),128,46542,64,8,3
+16,numpy (articulated body),256,81471,64,8,3
+16,numpy (articulated body),512,137781,64,8,3
+16,numpy (articulated body),1024,228097,64,8,3
+16,numpy (articulated body),2048,349717,64,8,3
+16,numpy (articulated body),4096,425905,64,8,3
+16,numpy (articulated body),8192,427281,64,8,3
+16,numpy (articulated body),16384,287414,64,8,3
+16,numpy (articulated body),32768,395936,64,8,3
+16,numpy (articulated body),65536,311783,64,8,3
+16,"mlx compiled (articulated body), eval every 32",1,76,64,8,3
+16,"mlx compiled (articulated body), eval every 32",2,139,64,8,3
+16,"mlx compiled (articulated body), eval every 32",4,278,64,8,3
+16,"mlx compiled (articulated body), eval every 32",8,657,64,8,3
+16,"mlx compiled (articulated body), eval every 32",16,1545,64,8,3
+16,"mlx compiled (articulated body), eval every 32",32,3721,64,8,3
+16,"mlx compiled (articulated body), eval every 32",64,7792,64,8,3
+16,"mlx compiled (articulated body), eval every 32",128,15034,64,8,3
+16,"mlx compiled (articulated body), eval every 32",256,29543,64,8,3
+16,"mlx compiled (articulated body), eval every 32",512,56718,64,8,3
+16,"mlx compiled (articulated body), eval every 32",1024,110402,64,8,3
+16,"mlx compiled (articulated body), eval every 32",2048,211511,64,8,3
+16,"mlx compiled (articulated body), eval every 32",4096,413393,64,8,3
+16,"mlx compiled (articulated body), eval every 32",8192,780006,64,8,3
+16,"mlx compiled (articulated body), eval every 32",16384,1441649,64,8,3
+16,"mlx compiled (articulated body), eval every 32",32768,2726264,64,8,3
+16,"mlx compiled (articulated body), eval every 32",65536,3576896,64,8,3
+16,"articulated-body kernel, eval every step",1,3384,64,8,3
+16,"articulated-body kernel, eval every step",2,6983,64,8,3
+16,"articulated-body kernel, eval every step",4,13784,64,8,3
+16,"articulated-body kernel, eval every step",8,27257,64,8,3
+16,"articulated-body kernel, eval every step",16,55493,64,8,3
+16,"articulated-body kernel, eval every step",32,108364,64,8,3
+16,"articulated-body kernel, eval every step",64,219765,64,8,3
+16,"articulated-body kernel, eval every step",128,419933,64,8,3
+16,"articulated-body kernel, eval every step",256,840062,64,8,3
+16,"articulated-body kernel, eval every step",512,1630337,64,8,3
+16,"articulated-body kernel, eval every step",1024,3153751,64,8,3
+16,"articulated-body kernel, eval every step",2048,6507667,64,8,3
+16,"articulated-body kernel, eval every step",4096,12159000,64,8,3
+16,"articulated-body kernel, eval every step",8192,20648271,64,8,3
+16,"articulated-body kernel, eval every step",16384,30695870,64,8,3
+16,"articulated-body kernel, eval every step",32768,40663922,64,8,3
+16,"articulated-body kernel, eval every step",65536,53120052,64,8,3
+16,"articulated-body kernel, eval every 32",1,10323,64,8,3
+16,"articulated-body kernel, eval every 32",2,21748,64,8,3
+16,"articulated-body kernel, eval every 32",4,41656,64,8,3
+16,"articulated-body kernel, eval every 32",8,80582,64,8,3
+16,"articulated-body kernel, eval every 32",16,171289,64,8,3
+16,"articulated-body kernel, eval every 32",32,328109,64,8,3
+16,"articulated-body kernel, eval every 32",64,665448,64,8,3
+16,"articulated-body kernel, eval every 32",128,1355039,64,8,3
+16,"articulated-body kernel, eval every 32",256,2400674,64,8,3
+16,"articulated-body kernel, eval every 32",512,4973641,64,8,3
+16,"articulated-body kernel, eval every 32",1024,9584673,64,8,3
+16,"articulated-body kernel, eval every 32",2048,17569288,64,8,3
+16,"articulated-body kernel, eval every 32",4096,30426138,64,8,3
+16,"articulated-body kernel, eval every 32",8192,48002196,64,8,3
+16,"articulated-body kernel, eval every 32",16384,52591397,64,8,3
+16,"articulated-body kernel, eval every 32",32768,59909000,64,8,3
+16,"articulated-body kernel, eval every 32",65536,68215640,64,8,3
+16,"mass-matrix kernel (v10), eval every 32",1,2508,64,8,3
+16,"mass-matrix kernel (v10), eval every 32",2,4993,64,8,3
+16,"mass-matrix kernel (v10), eval every 32",4,10124,64,8,3
+16,"mass-matrix kernel (v10), eval every 32",8,20376,64,8,3
+16,"mass-matrix kernel (v10), eval every 32",16,40504,64,8,3
+16,"mass-matrix kernel (v10), eval every 32",32,80451,64,8,3
+16,"mass-matrix kernel (v10), eval every 32",64,161824,64,8,3
+16,"mass-matrix kernel (v10), eval every 32",128,319871,64,8,3
+16,"mass-matrix kernel (v10), eval every 32",256,506390,64,8,3
+16,"mass-matrix kernel (v10), eval every 32",512,1016686,64,8,3
+16,"mass-matrix kernel (v10), eval every 32",1024,2007338,64,8,3
+16,"mass-matrix kernel (v10), eval every 32",2048,3843096,64,8,3
+16,"mass-matrix kernel (v10), eval every 32",4096,6751054,64,8,3
+16,"mass-matrix kernel (v10), eval every 32",8192,8721460,64,8,3
+16,"mass-matrix kernel (v10), eval every 32",16384,10096709,64,8,3
+16,"mass-matrix kernel (v10), eval every 32",32768,11285601,64,8,3
+16,"mass-matrix kernel (v10), eval every 32",65536,12199473,64,8,3
+32,numpy (articulated body),1,186,64,8,3
+32,numpy (articulated body),2,373,64,8,3
+32,numpy (articulated body),4,744,64,8,3
+32,numpy (articulated body),8,1461,64,8,3
+32,numpy (articulated body),16,2978,64,8,3
+32,numpy (articulated body),32,5904,64,8,3
+32,numpy (articulated body),64,11323,64,8,3
+32,numpy (articulated body),128,21994,64,8,3
+32,numpy (articulated body),256,38171,64,8,3
+32,numpy (articulated body),512,64571,64,8,3
+32,numpy (articulated body),1024,104078,64,8,3
+32,numpy (articulated body),2048,155440,64,8,3
+32,numpy (articulated body),4096,166333,64,8,3
+32,numpy (articulated body),8192,176390,64,8,3
+32,numpy (articulated body),16384,93358,64,8,3
+32,numpy (articulated body),32768,111974,64,8,3
+32,numpy (articulated body),65536,150518,64,8,3
+32,"mlx compiled (articulated body), eval every 32",1,45,64,8,3
+32,"mlx compiled (articulated body), eval every 32",2,104,64,8,3
+32,"mlx compiled (articulated body), eval every 32",4,209,64,8,3
+32,"mlx compiled (articulated body), eval every 32",8,434,64,8,3
+32,"mlx compiled (articulated body), eval every 32",16,799,64,8,3
+32,"mlx compiled (articulated body), eval every 32",32,1548,64,8,3
+32,"mlx compiled (articulated body), eval every 32",64,3054,64,8,3
+32,"mlx compiled (articulated body), eval every 32",128,5889,64,8,3
+32,"mlx compiled (articulated body), eval every 32",256,11180,64,8,3
+32,"mlx compiled (articulated body), eval every 32",512,23607,64,8,3
+32,"mlx compiled (articulated body), eval every 32",1024,46075,64,8,3
+32,"mlx compiled (articulated body), eval every 32",2048,79008,64,8,3
+32,"mlx compiled (articulated body), eval every 32",4096,168777,64,8,3
+32,"mlx compiled (articulated body), eval every 32",8192,336462,64,8,3
+32,"mlx compiled (articulated body), eval every 32",16384,780324,64,8,3
+32,"mlx compiled (articulated body), eval every 32",32768,1577566,64,8,3
+32,"mlx compiled (articulated body), eval every 32",65536,1841996,64,8,3
+32,"articulated-body kernel, eval every step",1,2208,64,8,3
+32,"articulated-body kernel, eval every step",2,5780,64,8,3
+32,"articulated-body kernel, eval every step",4,11981,64,8,3
+32,"articulated-body kernel, eval every step",8,23340,64,8,3
+32,"articulated-body kernel, eval every step",16,45874,64,8,3
+32,"articulated-body kernel, eval every step",32,93304,64,8,3
+32,"articulated-body kernel, eval every step",64,182156,64,8,3
+32,"articulated-body kernel, eval every step",128,364210,64,8,3
+32,"articulated-body kernel, eval every step",256,651830,64,8,3
+32,"articulated-body kernel, eval every step",512,1289567,64,8,3
+32,"articulated-body kernel, eval every step",1024,2625299,64,8,3
+32,"articulated-body kernel, eval every step",2048,5348086,64,8,3
+32,"articulated-body kernel, eval every step",4096,10162869,64,8,3
+32,"articulated-body kernel, eval every step",8192,12534629,64,8,3
+32,"articulated-body kernel, eval every step",16384,13724779,64,8,3
+32,"articulated-body kernel, eval every step",32768,14893558,64,8,3
+32,"articulated-body kernel, eval every step",65536,15613636,64,8,3
+32,"articulated-body kernel, eval every 32",1,6329,64,8,3
+32,"articulated-body kernel, eval every 32",2,13405,64,8,3
+32,"articulated-body kernel, eval every 32",4,26393,64,8,3
+32,"articulated-body kernel, eval every 32",8,50564,64,8,3
+32,"articulated-body kernel, eval every 32",16,103684,64,8,3
+32,"articulated-body kernel, eval every 32",32,210104,64,8,3
+32,"articulated-body kernel, eval every 32",64,415656,64,8,3
+32,"articulated-body kernel, eval every 32",128,735916,64,8,3
+32,"articulated-body kernel, eval every 32",256,1343883,64,8,3
+32,"articulated-body kernel, eval every 32",512,2658086,64,8,3
+32,"articulated-body kernel, eval every 32",1024,5348404,64,8,3
+32,"articulated-body kernel, eval every 32",2048,10468312,64,8,3
+32,"articulated-body kernel, eval every 32",4096,17206224,64,8,3
+32,"articulated-body kernel, eval every 32",8192,18300953,64,8,3
+32,"articulated-body kernel, eval every 32",16384,17483879,64,8,3
+32,"articulated-body kernel, eval every 32",32768,17472311,64,8,3
+32,"articulated-body kernel, eval every 32",65536,17807725,64,8,3
+64,numpy (articulated body),1,93,64,8,3
+64,numpy (articulated body),2,186,64,8,3
+64,numpy (articulated body),4,373,64,8,3
+64,numpy (articulated body),8,738,64,8,3
+64,numpy (articulated body),16,1443,64,8,3
+64,numpy (articulated body),32,2910,64,8,3
+64,numpy (articulated body),64,5713,64,8,3
+64,numpy (articulated body),128,10666,64,8,3
+64,numpy (articulated body),256,17580,64,8,3
+64,numpy (articulated body),512,30887,64,8,3
+64,numpy (articulated body),1024,51263,64,8,3
+64,numpy (articulated body),2048,63302,64,8,3
+64,numpy (articulated body),4096,70020,64,8,3
+64,numpy (articulated body),8192,77872,64,8,3
+64,numpy (articulated body),16384,48025,64,8,3
+64,numpy (articulated body),32768,54375,64,8,3
+64,numpy (articulated body),65536,84588,64,8,3
+64,"mlx compiled (articulated body), eval every 32",1,26,64,8,3
+64,"mlx compiled (articulated body), eval every 32",2,51,64,8,3
+64,"mlx compiled (articulated body), eval every 32",4,103,64,8,3
+64,"mlx compiled (articulated body), eval every 32",8,207,64,8,3
+64,"mlx compiled (articulated body), eval every 32",16,419,64,8,3
+64,"mlx compiled (articulated body), eval every 32",32,766,64,8,3
+64,"mlx compiled (articulated body), eval every 32",64,1561,64,8,3
+64,"mlx compiled (articulated body), eval every 32",128,3138,64,8,3
+64,"mlx compiled (articulated body), eval every 32",256,6206,64,8,3
+64,"mlx compiled (articulated body), eval every 32",512,12108,64,8,3
+64,"mlx compiled (articulated body), eval every 32",1024,23177,64,8,3
+64,"mlx compiled (articulated body), eval every 32",2048,44418,64,8,3
+64,"mlx compiled (articulated body), eval every 32",4096,86624,64,8,3
+64,"mlx compiled (articulated body), eval every 32",8192,181193,64,8,3
+64,"mlx compiled (articulated body), eval every 32",16384,388185,64,8,3
+64,"mlx compiled (articulated body), eval every 32",32768,648483,64,8,3
+64,"mlx compiled (articulated body), eval every 32",65536,793156,64,8,3
+64,"articulated-body kernel, eval every step",1,2305,64,8,3
+64,"articulated-body kernel, eval every step",2,4789,64,8,3
+64,"articulated-body kernel, eval every step",4,9677,64,8,3
+64,"articulated-body kernel, eval every step",8,18874,64,8,3
+64,"articulated-body kernel, eval every step",16,37647,64,8,3
+64,"articulated-body kernel, eval every step",32,75481,64,8,3
+64,"articulated-body kernel, eval every step",64,149426,64,8,3
+64,"articulated-body kernel, eval every step",128,264188,64,8,3
+64,"articulated-body kernel, eval every step",256,470783,64,8,3
+64,"articulated-body kernel, eval every step",512,996003,64,8,3
+64,"articulated-body kernel, eval every step",1024,1093175,64,8,3
+64,"articulated-body kernel, eval every step",2048,1089573,64,8,3
+64,"articulated-body kernel, eval every step",4096,4935532,64,8,3
+64,"articulated-body kernel, eval every step",8192,3752380,64,8,3
+64,"articulated-body kernel, eval every step",16384,3884416,64,8,3
+64,"articulated-body kernel, eval every step",32768,3894883,64,8,3
+64,"articulated-body kernel, eval every step",65536,3863401,64,8,3
+64,"articulated-body kernel, eval every 32",1,4509,64,8,3
+64,"articulated-body kernel, eval every 32",2,9006,64,8,3
+64,"articulated-body kernel, eval every 32",4,18079,64,8,3
+64,"articulated-body kernel, eval every 32",8,34662,64,8,3
+64,"articulated-body kernel, eval every 32",16,68875,64,8,3
+64,"articulated-body kernel, eval every 32",32,138837,64,8,3
+64,"articulated-body kernel, eval every 32",64,283963,64,8,3
+64,"articulated-body kernel, eval every 32",128,469822,64,8,3
+64,"articulated-body kernel, eval every 32",256,712705,64,8,3
+64,"articulated-body kernel, eval every 32",512,1528088,64,8,3
+64,"articulated-body kernel, eval every 32",1024,3059184,64,8,3
+64,"articulated-body kernel, eval every 32",2048,4635990,64,8,3
+64,"articulated-body kernel, eval every 32",4096,5792501,64,8,3
+64,"articulated-body kernel, eval every 32",8192,4448651,64,8,3
+64,"articulated-body kernel, eval every 32",16384,4145115,64,8,3
+64,"articulated-body kernel, eval every 32",32768,4134353,64,8,3
+64,"articulated-body kernel, eval every 32",65536,3961767,64,8,3
