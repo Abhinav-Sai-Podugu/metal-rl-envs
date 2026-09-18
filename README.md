@@ -14,7 +14,7 @@ hardware. Nobody had for Metal.
 
 ## Results at a glance
 
-Eleven versions, each one question, each asked because of the previous
+Twelve versions, each one question, each asked because of the previous
 answer. Every number is the median of repeated runs on the same M3 Pro and
 can be regenerated with one command; the section for each version carries
 its table, its plot and its own methodology.
@@ -32,8 +32,9 @@ its table, its plot and its own methodology.
 | v9 | How heavy can a body get? | The GPU pays for arithmetic from Acrobot's weight up, but numpy does too | ~100x at any weight; the kernel beats numpy at N = 1 for every body |
 | v10 | Does a SIMD-cooperative solve rescue heavy bodies? | Only with few environments; at large N the per-thread state is the bound | 2x at N = 256, 0.4x at N = 65,536 for K = 16 |
 | v11 | Does changing the algorithm beat changing the kernel? | Yes: an O(K) formulation with O(K) state per thread | 5.6x at K = 16; runs to K = 64 where a mass matrix cannot |
+| v12 | Do contacts break the batch? | No: an exact hard contact costs nothing extra, and branching on it costs nothing on Metal | 617M steps/s, 600x numpy at N = 262K, branchy = select |
 
-Three things held across all eleven:
+Four things held across all twelve:
 
 - **The arithmetic is never the cost, until the body weighs as much as
   Acrobot; past that, the algorithm is.** Memory layout (v1), launch count
@@ -50,6 +51,11 @@ Three things held across all eleven:
   Iterations, gradient steps and generations to solve were flat in N past
   256 to 4,096 for every learner on both bodies (v5 to v8). What the GPU
   bought was the cost of each of those, not their number.
+- **The branch-free discipline was never what made batching work.** v1's
+  rule was to compute every outcome and select. v12 branched on contact
+  inside a kernel and measured no difference against selecting; what
+  batching needs is that every environment runs the same program, which
+  a branch inside one thread does not break.
 
 ## v1: where is the crossover?
 
@@ -1450,11 +1456,120 @@ minutes.
 - The flop count is a hand count of about 140 per link per stage and is
   approximate.
 
+## v12: do contacts break the batch?
+
+No. A hopper with one hard contact, solved exactly each substep, steps at
+**617M environment steps per second** on the kernel, the same rate as a
+body of Acrobot's weight with no contact at all; the kernel beats numpy at
+N = 1 by 10x and by 600x at N = 262,144, the widest margin in the project.
+And the first genuinely branchy dynamics here, in contact or not, sticking
+or sliding, costs nothing on Metal: a kernel that branches on contact and one
+that selects are within run-to-run noise in every regime.
+
+![Planar hopper with one hard contact: numpy, compiled MLX and the Metal kernel against N](results/hopper.png)
+
+The body: a torso disk with mass and inertia at the hip, a massless leg
+with a point-mass foot, four coordinates, a hip torque in three levels as
+the action. One contact at the foot against a floor: inelastic in the
+normal direction, Coulomb friction in the tangent, the 2×2 contact problem
+solved exactly each substep (stick, slide on the cone's edge in the
+consistent direction, or separate), Baumgarte stabilisation against
+penetration, no penalty springs. Semi-implicit Euler, four substeps of
+0.01 per control step, velocities first and impulses applied to the free
+velocity, as physics engines do. Same three implementations; the numpy and
+MLX versions share one generic substep, the kernel factors the 4×4 mass
+matrix once per substep and solves three right-hand sides.
+
+- **Contacts add no disproportionate cost.** About a thousand flops per
+  step, four mass matrices, four Cholesky factorisations, twelve solves and
+  four contact resolutions, run at 617M steps per second at N = 262,144,
+  roughly 600 GFLOPS, the same rate the K = 16 articulated body reached.
+  numpy's step is four hundred array calls, 600 µs at N = 1 and a
+  memory-bound 1.6M steps per second at its peak, which is why the margins
+  are the project's widest.
+- **Divergence did not cost.** Two kernels differ only in the contact
+  block: `select` computes the impulse for every environment and zeroes it
+  when airborne, `branchy` skips it inside `if (touching)`. Timed at
+  N = 65,536 with every environment airborne, every environment standing,
+  and a random policy that mixes the two:
+
+| kernel | airborne: steps/s | standing: steps/s | mixed: steps/s |
+|---|--:|--:|--:|
+| select kernel | 260,115,574 | 266,561,351 | 208,511,266 |
+| branchy kernel | 266,979,703 | 268,570,996 | 206,965,574 |
+
+  The mixed regime looked 22% slower for both kernels, so a fourth regime
+  was run, airborne with random actions: 217M against 261M with a fixed
+  action for the select kernel, 244M against 310M for the branchy one. The
+  gap is the action draw, one extra random-number kernel per step in a loop
+  that syncs every step, not the contact regime. Contact-regime differences
+  and the branchy-versus-select difference are both inside the 10% to 15%
+  the same cell moves between runs.
+- **The physics needed three fixes the tests found.** The sliding direction
+  must be chosen by consistency, solving both directions and keeping the one
+  whose residual slip opposes the friction, because capping the tangential
+  impulse changes the normal one when the contact matrix couples them; the
+  first version took the sign from the sticking solution and failed a
+  complementarity check on tilted legs. A contact whose free motion already
+  separates gets no impulse, the solution an iterative solver reaches from
+  zero and the physical one; the exact stick branch can otherwise find a
+  second solution where friction drags the foot back down. And the friction
+  coefficient is 0.7, not 1.0: at 1.0 the exact solve is ill-posed for 15%
+  of random configurations (Painlevé's regime, where the cone is wider than
+  the coupling allows); at 0.7 the margin is positive at every leg angle.
+
+### Table
+
+Same machine and conditions, v1's parameters: 256 timed iterations after
+16, median of 3, N to 262,144. `results/hopper.csv`;
+`uv run bench_hopper.py --max-exp 18` regenerates it and the divergence
+experiment in about twenty minutes.
+
+| N | numpy | mlx compiled, eval every 32 | metal kernel, eval every step | metal kernel, eval every 32 | best GPU / numpy |
+|--:|--:|--:|--:|--:|--:|
+| 1 | 1,665 | 620 | 4,860 | 17,257 | 10.36x |
+| 2 | 3,313 | 1,239 | 9,459 | 36,639 | 11.06x |
+| 4 | 6,556 | 2,503 | 19,393 | 71,746 | 10.94x |
+| 8 | 13,126 | 4,955 | 37,723 | 141,797 | 10.80x |
+| 16 | 26,175 | 9,811 | 76,568 | 281,279 | 10.75x |
+| 32 | 52,130 | 19,224 | 150,890 | 511,836 | 9.82x |
+| 64 | 98,537 | 37,967 | 310,855 | 1,021,184 | 10.36x |
+| 128 | 179,095 | 75,087 | 588,612 | 2,028,355 | 11.33x |
+| 256 | 328,562 | 147,148 | 1,180,062 | 3,728,597 | 11.35x |
+| 512 | 556,602 | 293,973 | 2,374,331 | 7,438,116 | 13.36x |
+| 1,024 | 899,534 | 580,690 | 4,672,073 | 14,615,216 | 16.25x |
+| 2,048 | 1,246,090 | 1,149,583 | 9,262,527 | 30,374,358 | 24.38x |
+| 4,096 | 1,462,638 | 2,271,352 | 18,922,000 | 61,819,275 | 42.27x |
+| 8,192 | 1,500,879 | 4,479,257 | 38,411,165 | 114,413,252 | 76.23x |
+| 16,384 | 1,592,598 | 9,071,383 | 67,071,796 | 243,209,741 | 152.71x |
+| 32,768 | 1,509,757 | 17,335,949 | 118,854,655 | 398,287,942 | 263.81x |
+| 65,536 | 1,231,945 | 23,501,907 | 203,526,923 | 561,614,119 | 455.88x |
+| 131,072 | 1,125,801 | 17,923,909 | 312,864,754 | 595,339,616 | 528.81x |
+| 262,144 | 1,023,476 | 14,828,350 | 456,322,273 | 617,208,169 | 603.05x |
+
+### v12 methodology
+
+- **Physics checked analytically before any parity test**: free flight
+  follows the parabola and conserves energy with rotation; a standing body
+  does not drift in 400 substeps, the impulse cancelling gravity exactly; a
+  dropped body lands without bounce and penetrates less than one substep of
+  fall; a sliding foot decelerates under friction and does not with the
+  coefficient at zero; and the impulse satisfies the contact laws on 2,000
+  random well-posed contact matrices: no pull, the normal velocity at its
+  target when pushing, friction in the cone with the foot stuck or on the
+  cone's edge opposing the slip.
+- **Both ports agree with numpy** to 1e-3 on 500 random states of which
+  about half are in contact, including tilted legs and both kernel
+  variants; resets and a 100-step lazy chain are checked as before.
+- Reward is forward velocity plus one; termination is the torso below 0.6
+  or tilted past one radian; reset is the standing pose with noise of 0.05,
+  which alone places some feet up to five centimetres below the floor.
+
 ## Reproduce
 
 ```
 uv sync
-uv run python test_cartpole.py && uv run python test_acrobot.py && uv run python test_pendulum.py && uv run python test_pendulum_aba.py && uv run python test_ppo.py && uv run python test_dqn.py && uv run python test_es.py
+uv run python test_cartpole.py && uv run python test_acrobot.py && uv run python test_pendulum.py && uv run python test_pendulum_aba.py && uv run python test_hopper.py && uv run python test_ppo.py && uv run python test_dqn.py && uv run python test_es.py
 uv run bench.py        # v1: environment throughput sweep, ~3 min
 uv run bench_ppo.py    # v2: PPO wall-clock to solve sweep, ~6 min
 uv run bench_kernel.py # v3: Metal kernel vs compiled step, ~3 min
@@ -1465,6 +1580,7 @@ uv run bench_es.py     # v7: Evolution Strategies on three backends, ~45 min
 uv run bench_es.py --task acrobot --time-budget 300  # v8: the same on Acrobot, ~25 min
 uv run bench_pendulum.py  # v9/v10: the K-link pendulum, body size as the axis, ~50 min
 uv run bench_aba.py       # v11: the articulated-body formulation to K = 64, ~35 min
+uv run bench_hopper.py --max-exp 18  # v12: the hopper with one hard contact, ~20 min
 uv run ppo.py --n 256  # one PPO run with a per-iteration log
 ```
 
@@ -1500,6 +1616,10 @@ uv run ppo.py --n 256  # one PPO run with a per-iteration log
   `test_pendulum_aba.py`, `bench_aba.py`: v11, the same body by
   Featherstone's articulated-body algorithm in all three implementations,
   checked against the mass-matrix version, and its sweep to K = 64.
+- `hopper_np.py`, `hopper_mlx.py`, `hopper_metal.py`, `test_hopper.py`,
+  `bench_hopper.py`: v12, a planar hopper with one hard contact in all three
+  implementations, the select and branchy kernels, the analytic physics
+  tests, and the sweep with the divergence experiment.
 - `es.py`, `cartpole_rollout_metal.py`, `acrobot_rollout_metal.py`,
   `test_es.py`, `bench_es.py`: v7 and v8, Evolution Strategies on three
   backends for either task, the two whole-rollout kernels, tests including
@@ -1523,5 +1643,6 @@ that consumes the environment. v8: the same on Acrobot. v9: a K-link
 pendulum with body size as the knob, to a hundred times CartPole's
 arithmetic. v10: a SIMD-cooperative solve for it, which wins only with few
 environments. v11: the O(K) articulated-body formulation, which wins
-outright. Each shipped complete. Not here: contacts, three dimensions,
-anything beyond one machine.
+outright. v12: a hopper with one hard contact, and the finding that
+branching on it costs nothing. Each shipped complete. Not here: more than
+one contact, three dimensions, anything beyond one machine.

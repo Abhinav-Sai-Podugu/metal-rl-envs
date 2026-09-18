@@ -3,23 +3,24 @@
 Abhinav is starting this project here. This file is the handoff; he takes the
 session from this point. Read it, then work with him directly.
 
-## Status (2026-09-17)
+## Status (2026-09-18)
 
-v1 to v11 are shipped and public. v1: batched CartPole, numpy vs MLX, GPU
+v1 to v12 are shipped and public. v1: batched CartPole, numpy vs MLX, GPU
 wins above N ≈ 4K, peaks at 19x. v2: PPO; the update, not the environment,
 is the bottleneck. v3: one hand-written Metal kernel beats mx.compile 1.7x
 to 2.9x, 1.25B steps/s at N = 1M. v4: on Acrobot the kernel beats numpy at
 N = 1, 102x at N = 262K. v5: no hyperparameter rule makes large N pay in
 PPO. v6: DQN uses fresh data to N ≈ 256; learner read rate is the ceiling.
 v7: ES with the whole rollout as one kernel solves CartPole in ~20 ms. v8:
-the same on Acrobot in 11 to 20 ms. v9: a K-link pendulum; ~100x over numpy
-at any weight, kernel beats numpy at N = 1 for every body; a Metal thread
-over ~4 KB private memory returns wrong results silently. v10: cooperative
-solve, trig identity and memory placement move a heavy body by at most a
-tenth. v11: Featherstone's O(K) articulated-body formulation is 5.6x the
-mass-matrix kernel at K = 16 and runs to K = 64; mx.compile fails at K = 2
-by exhausting Metal argument buffers. Findings, tables and methodology are
-in README.md. Open: contacts, three dimensions. This is the stopping point.
+the same on Acrobot in 11 to 20 ms. v9: a K-link pendulum; a Metal thread
+over ~4 KB private memory returns wrong results silently. v10: kernel
+tricks move a heavy body by at most a tenth. v11: Featherstone's O(K)
+formulation is 5.6x the mass-matrix kernel at K = 16, runs to K = 64. v12:
+a hopper with one exact hard contact steps at 617M/s, 600x numpy at
+N = 262K; branching on contact costs nothing against selecting; the mixed
+regime's apparent penalty was the random-action draw. Findings, tables and
+methodology are in README.md. Open: multiple contacts, three dimensions.
+This is the stopping point.
 
 ## What this is
 
