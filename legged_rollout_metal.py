@@ -50,8 +50,8 @@ _SOURCE = """
             tq[leg] = torque * TORQUE;
         }
         legged_substeps<C, ITERS, SUBSTEPS>(q, v, tq);
-        if (q[1] < FALL_HEIGHT || metal::abs(q[2]) > FALL_ANGLE) { taken += 1.0f; break; }
-        total += v[0] + (ALIVE ? 1.0f : 0.0f);   // ALIVE: the environment's reward; else forward velocity alone
+        if (q[1] < FALL_HEIGHT || metal::abs(q[2]) > FALL_ANGLE) { taken += 1.0f; total -= float(FALL); break; }
+        total += v[0] + float(ALIVE_CENTI) / 100.0f;   // shaped reward: forward velocity + alive bonus per step
         taken += 1.0f;
     }
     fitness[i] = total;
@@ -67,13 +67,15 @@ _kernel = mx.fast.metal_kernel(
 )
 
 
-def rollout(state, theta_pop, hidden, horizon, c, alive_bonus=True):
+def rollout(state, theta_pop, hidden, horizon, c, alive_bonus=1.0, fall_penalty=0.0):
     """(fitness, steps taken) for each of P members from `state` (2(3+C), P), lazily. Fitness is the
-    environment's reward sum, forward velocity plus one per step, or forward velocity alone."""
+    shaped reward summed to the first fall: forward velocity plus `alive_bonus` per step, minus
+    `fall_penalty` once if the body falls. The bonus is passed in hundredths, templates being integers."""
     n = state.shape[1]
     return _kernel(
         inputs=[state, theta_pop],
-        template=[("C", c), ("H", hidden), ("HORIZON", horizon), ("ITERS", ITERS), ("SUBSTEPS", SUBSTEPS), ("ALIVE", bool(alive_bonus))],
+        template=[("C", c), ("H", hidden), ("HORIZON", horizon), ("ITERS", ITERS), ("SUBSTEPS", SUBSTEPS),
+                  ("ALIVE_CENTI", int(round(100 * alive_bonus))), ("FALL", int(round(fall_penalty)))],
         grid=(n, 1, 1),
         threadgroup=(min(n, 256), 1, 1),
         output_shapes=[(n,), (n,)],

@@ -57,7 +57,9 @@ class Task:
     obs: Callable            # (xp, state) -> (P, obs_dim)
     action: Callable         # (xp, logits (P, n_out)) -> action index (P,)
     rollout: Callable        # (state, theta_pop, hidden, horizon) -> (fitness, steps), the fused kernel
-    alive_bonus: bool = True  # False: fitness is the environment's reward minus its alive bonus of one
+    alive_bonus: float = 1.0   # training reward per step is the environment's reward - 1 + alive_bonus
+    fall_penalty: float = 0.0  # subtracted once from the training fitness at a fall
+    eval_bonus: float = 1.0    # the canonical score used for "solved": bonus 1 keeps the environment's reward
 
 
 def _argmax(xp, logits):
@@ -98,14 +100,15 @@ def _steps_fitness(kernel, sign):
     return rollout
 
 
-def _legged_task(c, alive=True):
-    """Fitness is the reward sum, forward velocity plus one per step, threshold 600 (a walk of 0.2 m/s
-    that never falls); or, with alive=False, forward velocity alone, threshold 100 (the same walk)."""
-    return Task(f"legged{c}" + ("" if alive else "_distance"), 5 + 2 * c, 3 * c, 16, 600.0 if alive else 100.0,
+def _legged_task(c, name, alive=1.0, fall=0.0):
+    """Training fitness is forward velocity plus `alive` per step, minus `fall` at a fall, summed to the
+    first fall. The canonical score for solved is the same for every variant: forward distance until the
+    first fall, threshold 100, a walk of 0.2 m/s over the full horizon; standing scores 0, diving little."""
+    return Task(f"legged{c}{name}", 5 + 2 * c, 3 * c, 16, 100.0,
                 legged_np.Legged(c), legged_mlx.Legged(c), legged_metal.Legged(c),
                 _legged_obs, _legged_action(c),
-                lambda state, theta, hidden, horizon: legged_rollout_metal.rollout(state, theta, hidden, horizon, c, alive),
-                alive)
+                lambda state, theta, hidden, horizon: legged_rollout_metal.rollout(state, theta, hidden, horizon, c, alive, fall),
+                alive, fall, 0.0)
 
 
 TASKS = {
@@ -113,10 +116,15 @@ TASKS = {
                      _cartpole_obs, _argmax, _steps_fitness(cartpole_rollout_metal.rollout_steps, 1.0)),
     "acrobot": Task("acrobot", 6, 3, 32, -100.0, acrobot_np, acrobot_mlx, acrobot_metal,
                     _acrobot_obs, _argmax, _steps_fitness(acrobot_rollout_metal.rollout_steps, -1.0)),
-    "legged2": _legged_task(2),
-    "legged4": _legged_task(4),
-    "legged2_distance": _legged_task(2, alive=False),
-    "legged4_distance": _legged_task(4, alive=False),
+    "legged2": _legged_task(2, ""),
+    "legged4": _legged_task(4, ""),
+    "legged2_distance": _legged_task(2, "_distance", alive=0.0),
+    "legged4_distance": _legged_task(4, "_distance", alive=0.0),
+    # v15: reward shaping for the biped
+    "legged2_alive10": _legged_task(2, "_alive10", alive=0.1),
+    "legged2_fall": _legged_task(2, "_fall", alive=0.0, fall=20.0),
+    "legged2_alive10_fall": _legged_task(2, "_alive10_fall", alive=0.1, fall=20.0),
+    "legged4_alive10": _legged_task(4, "_alive10", alive=0.1),
 }
 
 
@@ -168,8 +176,9 @@ def loop_fitness(backend, params, horizon):
         action = task.action(xp, population_logits(xp, backend.obs(state), params))
         state, reward, done = backend.step(state, action)
         steps = steps + alive.astype(steps.dtype)
+        fell = alive & done
         alive = alive & ~done
-        fit = fit + (reward - (0.0 if task.alive_bonus else 1.0)) * alive.astype(fit.dtype)
+        fit = fit + (reward - 1.0 + task.alive_bonus) * alive.astype(fit.dtype) - task.fall_penalty * fell.astype(fit.dtype)
         if t % 50 == 49:
             backend.sync(state, alive, fit, steps)
     return fit, steps
@@ -266,7 +275,9 @@ def mean_policy(theta, hidden, task):
 
 
 def evaluate(task, actor, n=2048, steps=500):
-    """Mean reward sum until first termination of a greedy actor over n fresh episodes, on the GPU."""
+    """Canonical score of a greedy actor over n fresh episodes, on the GPU: the environment's reward
+    minus one plus task.eval_bonus, summed to the first termination. For CartPole and Acrobot that is
+    the environment's own reward; for the legged tasks, forward distance until the first fall."""
     state = task.mlx.reset(n)
     alive = mx.ones((n,), dtype=mx.bool_)
     fit = mx.zeros((n,))
@@ -274,7 +285,7 @@ def evaluate(task, actor, n=2048, steps=500):
         action = task.action(mx, actor(task.obs(mx, state)))
         state, reward, done = task.metal.step(state, action)
         alive = alive & ~done
-        fit = fit + (reward - (0.0 if task.alive_bonus else 1.0)) * alive.astype(mx.float32)
+        fit = fit + (reward - 1.0 + task.eval_bonus) * alive.astype(mx.float32)
         if t % 100 == 99:
             mx.eval(state, alive, fit)
     return fit.mean().item()

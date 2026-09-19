@@ -68,6 +68,19 @@ def test_rollout_kernels_match_loop():
             assert 5 < sl.mean() < 200, "random bipeds should fall within the horizon"
 
 
+def test_shaped_reward_kernel_matches_loop_and_canonical_score_ignores_it():
+    """A shaped variant (small alive bonus, fall penalty): the fused kernel and the loop agree on the
+    training fitness, and the canonical score is forward distance whatever the training reward."""
+    t = es.TASKS["legged2_alive10_fall"]
+    fk, sk, fl, sl = _kernel_vs_loop(t, 0.3)
+    close = np.abs(fk - fl) <= 1e-3 * np.maximum(np.abs(fl), 1.0) + 1e-2
+    assert close.mean() > 0.95 and (sk == sl).mean() > 0.95, (close.mean(), (sk == sl).mean())
+    assert (fk < 0).any(), "some random bipeds fall and pay the penalty"
+    standing = lambda obs: mx.concatenate([mx.zeros((obs.shape[0], 1)), mx.ones((obs.shape[0], 1)) * 10, mx.zeros((obs.shape[0], 4))], axis=1)
+    score = es.evaluate(t, standing)   # zero torque on both legs: the body stands and goes nowhere
+    assert abs(score) < 5.0, score
+
+
 def test_generation_uses_antithetic_pairs_and_moves_theta():
     cfg = es.Config(pop=8, horizon=5)
     backend = es.MetalBackend(CP, 0)
@@ -86,10 +99,13 @@ def test_es_learns_cartpole_and_acrobot():
 
 
 def test_es_learns_to_stay_up_on_two_legs():
-    """A random biped falls in ~20 steps (fitness ~20); a standing one scores ~500; ES must get the
-    mean policy past 300 within the budget."""
-    r = es.train(es.Config(task="legged2", pop=1024, time_budget=90.0, solved_at=300.0), "metal", seed=0)
-    assert r.score >= 300.0, r
+    """A random biped falls in ~20 steps (training fitness ~20 under the alive bonus); a standing one
+    scores ~500. The canonical score is forward distance, which standing does not earn, so this checks
+    the population's training fitness."""
+    last = []
+    es.train(es.Config(task="legged2", pop=1024, time_budget=30.0, max_generations=60), "metal", seed=0,
+             log=lambda gen, steps, secs, fit, score: last.append(fit))
+    assert last[-1] >= 300.0, last[-1]
 
 
 if __name__ == "__main__":
