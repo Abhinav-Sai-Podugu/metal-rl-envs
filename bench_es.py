@@ -22,7 +22,7 @@ def sweep(args):
         for lr in args.lrs:
             for pop in args.ns:
                 for seed in args.seeds:
-                    cfg = es.Config(task=args.task, pop=pop, lr=lr, time_budget=args.time_budget)
+                    cfg = es.Config(task=args.task, pop=pop, lr=lr, sigma=args.sigma, time_budget=args.time_budget)
                     r = es.train(cfg, backend, seed)
                     series = backend if args.series == "backend" else f"lr {lr}"
                     rows.append({"backend": backend, "lr": lr, "series": series, "n": pop, "seed": seed, **vars(r),
@@ -65,6 +65,7 @@ def parse_args():
     p.add_argument("--backends", nargs="+", default=None, choices=list(es.BACKENDS),
                    help="default: all three; on the legged tasks mlx and metal, numpy being too slow there")
     p.add_argument("--lrs", type=float, nargs="+", default=[0.1])
+    p.add_argument("--sigma", type=float, default=0.1, help="perturbation scale")
     p.add_argument("--series", choices=["backend", "lr"], default="backend")
     p.add_argument("--time-budget", type=float, default=300.0)
     p.add_argument("--out", default=None, help="results file stem; default es or es_<task>")
@@ -93,7 +94,7 @@ def main():
     print(score_table(rows, args.ns, series, args.seeds))
     print()
     cfg = es.Config()
-    print(f"task={args.task} hidden={es.TASKS[args.task].hidden} sigma={cfg.sigma} lrs={args.lrs} horizon={cfg.horizon} time_budget={args.time_budget}s seeds={args.seeds}")
+    print(f"task={args.task} hidden={es.TASKS[args.task].hidden} sigma={args.sigma} lrs={args.lrs} horizon={cfg.horizon} time_budget={args.time_budget}s seeds={args.seeds}")
 
 
 if __name__ == "__main__":

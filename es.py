@@ -60,6 +60,7 @@ class Task:
     alive_bonus: float = 1.0   # training reward per step is the environment's reward - 1 + alive_bonus
     fall_penalty: float = 0.0  # subtracted once from the training fitness at a fall
     eval_bonus: float = 1.0    # the canonical score used for "solved": bonus 1 keeps the environment's reward
+    height_gate: float = 0.0   # forward velocity counts only while the torso is above this height (legged)
 
 
 def _argmax(xp, logits):
@@ -100,15 +101,15 @@ def _steps_fitness(kernel, sign):
     return rollout
 
 
-def _legged_task(c, name, alive=1.0, fall=0.0):
+def _legged_task(c, name, alive=1.0, fall=0.0, gate=0.0):
     """Training fitness is forward velocity plus `alive` per step, minus `fall` at a fall, summed to the
     first fall. The canonical score for solved is the same for every variant: forward distance until the
     first fall, threshold 100, a walk of 0.2 m/s over the full horizon; standing scores 0, diving little."""
     return Task(f"legged{c}{name}", 5 + 2 * c, 3 * c, 16, 100.0,
                 legged_np.Legged(c), legged_mlx.Legged(c), legged_metal.Legged(c),
                 _legged_obs, _legged_action(c),
-                lambda state, theta, hidden, horizon: legged_rollout_metal.rollout(state, theta, hidden, horizon, c, alive, fall),
-                alive, fall, 0.0)
+                lambda state, theta, hidden, horizon: legged_rollout_metal.rollout(state, theta, hidden, horizon, c, alive, fall, gate),
+                alive, fall, 0.0, gate)
 
 
 TASKS = {
@@ -125,6 +126,7 @@ TASKS = {
     "legged2_fall": _legged_task(2, "_fall", alive=0.0, fall=20.0),
     "legged2_alive10_fall": _legged_task(2, "_alive10_fall", alive=0.1, fall=20.0),
     "legged4_alive10": _legged_task(4, "_alive10", alive=0.1),
+    "legged2_gated": _legged_task(2, "_gated", alive=0.0, gate=0.85),
 }
 
 
@@ -178,7 +180,8 @@ def loop_fitness(backend, params, horizon):
         steps = steps + alive.astype(steps.dtype)
         fell = alive & done
         alive = alive & ~done
-        fit = fit + (reward - 1.0 + task.alive_bonus) * alive.astype(fit.dtype) - task.fall_penalty * fell.astype(fit.dtype)
+        forward = (reward - 1.0) * (state[1] >= task.height_gate).astype(fit.dtype) if task.height_gate else reward - 1.0
+        fit = fit + (forward + task.alive_bonus) * alive.astype(fit.dtype) - task.fall_penalty * fell.astype(fit.dtype)
         if t % 50 == 49:
             backend.sync(state, alive, fit, steps)
     return fit, steps
