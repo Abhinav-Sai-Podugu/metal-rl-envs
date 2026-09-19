@@ -57,6 +57,7 @@ class Task:
     obs: Callable            # (xp, state) -> (P, obs_dim)
     action: Callable         # (xp, logits (P, n_out)) -> action index (P,)
     rollout: Callable        # (state, theta_pop, hidden, horizon) -> (fitness, steps), the fused kernel
+    alive_bonus: bool = True  # False: fitness is the environment's reward minus its alive bonus of one
 
 
 def _argmax(xp, logits):
@@ -97,11 +98,14 @@ def _steps_fitness(kernel, sign):
     return rollout
 
 
-def _legged_task(c):
-    return Task(f"legged{c}", 5 + 2 * c, 3 * c, 16, 600.0,
+def _legged_task(c, alive=True):
+    """Fitness is the reward sum, forward velocity plus one per step, threshold 600 (a walk of 0.2 m/s
+    that never falls); or, with alive=False, forward velocity alone, threshold 100 (the same walk)."""
+    return Task(f"legged{c}" + ("" if alive else "_distance"), 5 + 2 * c, 3 * c, 16, 600.0 if alive else 100.0,
                 legged_np.Legged(c), legged_mlx.Legged(c), legged_metal.Legged(c),
                 _legged_obs, _legged_action(c),
-                lambda state, theta, hidden, horizon: legged_rollout_metal.rollout(state, theta, hidden, horizon, c))
+                lambda state, theta, hidden, horizon: legged_rollout_metal.rollout(state, theta, hidden, horizon, c, alive),
+                alive)
 
 
 TASKS = {
@@ -111,6 +115,8 @@ TASKS = {
                     _acrobot_obs, _argmax, _steps_fitness(acrobot_rollout_metal.rollout_steps, -1.0)),
     "legged2": _legged_task(2),
     "legged4": _legged_task(4),
+    "legged2_distance": _legged_task(2, alive=False),
+    "legged4_distance": _legged_task(4, alive=False),
 }
 
 
@@ -163,7 +169,7 @@ def loop_fitness(backend, params, horizon):
         state, reward, done = backend.step(state, action)
         steps = steps + alive.astype(steps.dtype)
         alive = alive & ~done
-        fit = fit + reward * alive.astype(fit.dtype)
+        fit = fit + (reward - (0.0 if task.alive_bonus else 1.0)) * alive.astype(fit.dtype)
         if t % 50 == 49:
             backend.sync(state, alive, fit, steps)
     return fit, steps
@@ -268,7 +274,7 @@ def evaluate(task, actor, n=2048, steps=500):
         action = task.action(mx, actor(task.obs(mx, state)))
         state, reward, done = task.metal.step(state, action)
         alive = alive & ~done
-        fit = fit + reward * alive.astype(mx.float32)
+        fit = fit + (reward - (0.0 if task.alive_bonus else 1.0)) * alive.astype(mx.float32)
         if t % 100 == 99:
             mx.eval(state, alive, fit)
     return fit.mean().item()

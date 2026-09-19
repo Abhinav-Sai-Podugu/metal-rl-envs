@@ -51,7 +51,7 @@ _SOURCE = """
         }
         legged_substeps<C, ITERS, SUBSTEPS>(q, v, tq);
         if (q[1] < FALL_HEIGHT || metal::abs(q[2]) > FALL_ANGLE) { taken += 1.0f; break; }
-        total += v[0] + 1.0f;
+        total += v[0] + (ALIVE ? 1.0f : 0.0f);   // ALIVE: the environment's reward; else forward velocity alone
         taken += 1.0f;
     }
     fitness[i] = total;
@@ -67,12 +67,13 @@ _kernel = mx.fast.metal_kernel(
 )
 
 
-def rollout(state, theta_pop, hidden, horizon, c):
-    """(reward sum, steps taken) for each of P members from `state` (2(3+C), P), lazily."""
+def rollout(state, theta_pop, hidden, horizon, c, alive_bonus=True):
+    """(fitness, steps taken) for each of P members from `state` (2(3+C), P), lazily. Fitness is the
+    environment's reward sum, forward velocity plus one per step, or forward velocity alone."""
     n = state.shape[1]
     return _kernel(
         inputs=[state, theta_pop],
-        template=[("C", c), ("H", hidden), ("HORIZON", horizon), ("ITERS", ITERS), ("SUBSTEPS", SUBSTEPS)],
+        template=[("C", c), ("H", hidden), ("HORIZON", horizon), ("ITERS", ITERS), ("SUBSTEPS", SUBSTEPS), ("ALIVE", bool(alive_bonus))],
         grid=(n, 1, 1),
         threadgroup=(min(n, 256), 1, 1),
         output_shapes=[(n,), (n,)],
