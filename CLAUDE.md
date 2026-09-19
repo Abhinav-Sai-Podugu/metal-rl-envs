@@ -5,25 +5,24 @@ session from this point. Read it, then work with him directly.
 
 ## Status (2026-09-19)
 
-v1 to v14 are shipped and public. v1: batched CartPole, numpy vs MLX, GPU
+v1 to v15 are shipped and public. v1: batched CartPole, numpy vs MLX, GPU
 wins above N ≈ 4K, peaks at 19x. v2: PPO; the update, not the environment,
 is the bottleneck. v3: one hand-written Metal kernel beats mx.compile 1.7x
 to 2.9x, 1.25B steps/s at N = 1M. v4: on Acrobot the kernel beats numpy at
 N = 1, 102x at N = 262K. v5: no hyperparameter rule makes large N pay in
 PPO. v6: DQN uses fresh data to N ≈ 256; learner read rate is the ceiling.
 v7: ES with the whole rollout as one kernel solves CartPole in ~20 ms. v8:
-the same on Acrobot in 11 to 20 ms. v9: a K-link pendulum; a Metal thread
-over ~4 KB private memory returns wrong results silently. v10: kernel
-tricks move a heavy body by at most a tenth. v11: Featherstone's O(K)
-formulation is 5.6x the mass-matrix kernel at K = 16, runs to K = 64. v12:
-a hopper with one exact hard contact at 617M/s, 600x numpy; branching on
-contact costs nothing. v13: C legs and C contacts by block Gauss-Seidel;
-each doubling of sweeps halves the error for a fifth to a third of the
-step. v14: ES on the legged bodies: the quadruped learns a gait in 200 to
-500 generations (half the seeds, ≤ 2 min); the biped stands forever under
-the alive bonus and dives or shuffles without it; reward design binds, not
-the learner. Findings, tables and methodology are in README.md. Open:
-reward shaping for the biped, three dimensions. This is the stopping point.
+the same on Acrobot. v9: K-link pendulum; a Metal thread over ~4 KB private
+memory returns wrong results silently. v10: kernel tricks move a heavy body
+by at most a tenth. v11: Featherstone's O(K) formulation is 5.6x at K = 16.
+v12: a hopper with one exact hard contact, 617M/s; branching costs nothing.
+v13: C legs and C contacts by block Gauss-Seidel with its price list. v14:
+ES walks on four legs, stands on two. v15: seven shaped rewards for the
+biped; every one lands it on standing (any fall cost), a shuffle at 44 or a
+dive (no fall cost, or wider noise); 2 walkers in 42 runs; the body decides
+what a reward can do. Findings, tables and methodology are in README.md.
+Open: a curriculum or another learner for the biped, three dimensions.
+This is the stopping point.
 
 ## What this is
 

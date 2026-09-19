@@ -14,7 +14,7 @@ hardware. Nobody had for Metal.
 
 ## Results at a glance
 
-Fourteen versions, each one question, each asked because of the previous
+Fifteen versions, each one question, each asked because of the previous
 answer. Every number is the median of repeated runs on the same M3 Pro and
 can be regenerated with one command; the section for each version carries
 its table, its plot and its own methodology.
@@ -35,8 +35,9 @@ its table, its plot and its own methodology.
 | v12 | Do contacts break the batch? | No: an exact hard contact costs nothing extra, and branching on it costs nothing on Metal | 617M steps/s, 600x numpy at N = 262K, branchy = select |
 | v13 | Do multiple contacts break the batch? | No; the iterative solver has a price list: each doubling of sweeps halves the error for a fifth to a third of the step | four contacts at 24M steps/s, 357x numpy |
 | v14 | Can the learner learn to walk? | The quadruped, yes; the biped stands forever under an alive bonus and dives without one | a gait in 200 to 500 generations, half the seeds, 4 billion contact steps in 52 s |
+| v15 | Can reward shaping get the biped walking? | No: every reward lands it on standing, a shuffle or a dive; the body decides what a reward can do | 2 walkers in 42 runs under seven rewards |
 
-Four things held across all fourteen:
+Four things held across all fifteen:
 
 - **The arithmetic is never the cost, until the body weighs as much as
   Acrobot; past that, the algorithm is.** Memory layout (v1), launch count
@@ -1877,6 +1878,77 @@ Quadruped, forward velocity alone:
 - The episode ends at the first fall, so a member's steps and reward stop
   there; an episode that never falls runs the full 500-step horizon.
 
+## v15: can reward shaping get the biped walking?
+
+Not with any shaping tried, and the failure has a shape of its own. Across
+42 runs under seven rewards, two bipeds walked. Every reward lands the biped
+on one of three attractors: **standing** under any reward in which a fall
+costs more than standing, **a shuffle** at a fixed score of 44 under
+rewards in which it does not, and **a dive** when exploration is widened.
+The quadruped under the same small bonus walks in a third of its seeds.
+What a reward can do is decided by the body.
+
+The learner, body and kernel are v14's; only the training reward changes,
+and the score used for "solved" is now the same for every variant: the
+greedy policy's forward distance until its first fall, threshold 100 for a
+walk of 0.2 m/s across the full horizon, under which standing scores 0 and
+a dive scores about 11. Six runs per reward, populations of 1,024 and
+4,096, three seeds each, 120 s of training. The outcomes are deterministic
+per seed; the whole sweep ran on battery, so its seconds and throughput are
+not reported.
+
+| training reward | walked | median score | best | outcomes | generations to walk |
+|---|--:|--:|--:|---|--:|
+| alive bonus 1 per step (v14) | 0/6 | 1 | 1 | 6 stand | — |
+| forward velocity alone (v14) | 1/6 | 44 | 102 | 3 shuffle, 2 dive, 1 walk | 459 |
+| alive bonus 0.1 | 0/6 | 1 | 1 | 6 stand | — |
+| velocity, penalty 20 at a fall | 0/6 | 1 | 1 | 6 stand | — |
+| alive bonus 0.1 and the fall penalty | 0/6 | 1 | 1 | 6 stand | — |
+| velocity only while the torso is above 0.85 | 1/6 | 44 | 101 | 4 shuffle, 1 dive, 1 walk | 128 |
+| velocity alone, noise scale 0.3 | 0/6 | 11 | 11 | 6 dive | — |
+| quadruped, alive bonus 0.1 | 2/6 | 74 | 101 | 3 shuffle, 2 walk, 1 stand | 220, 390 |
+
+- **Any cost to falling produces standing.** An alive bonus a tenth the
+  size of v14's, a penalty of 20 at the fall with no bonus at all, and the
+  two combined each leave all six runs standing for 500 generations at a
+  score under one. The bonus's size is not the mechanism; its existence is.
+  From the standing basin almost every perturbation that moves the body
+  falls and forfeits what standing keeps, so the ranked gradient points at
+  not moving whatever not moving is worth.
+- **No cost to falling produces the shuffle or the dive.** Under forward
+  velocity alone, and under velocity gated on the torso staying up, the
+  same two failure modes appear with one walker in six: a shuffle that
+  scores 44 every time, a gait at under a tenth of a metre per second that
+  survives the horizon, and a lunge that falls within a few steps. The gate
+  reduced dives from two to one and moved nothing else. The one gated
+  walker took 128 generations and four seconds; the one under plain
+  velocity, 459.
+- **Wider exploration finds the dive every time.** With the perturbation
+  scale tripled, all six runs converge to the lunge at a score of 11: the
+  larger steps reach the cliff on the moving side before they reach the
+  gait.
+- **The quadruped is a different problem.** Under the small bonus that
+  froze the biped it walks in two seeds of six, with the others spread
+  from a shuffle to a near-walk, the same rate as v14's full bonus. Four
+  legs can move without leaving the standing basin; two from one hip
+  cannot, and no scalar reward tried changes that geometry.
+
+### v15 methodology
+
+- **The canonical score is independent of the training reward**: forward
+  distance until the first fall, evaluated on 2,048 fresh episodes of the
+  greedy mean policy every generation, outside the clock. A test checks
+  that a standing policy scores near zero under it and that a shaped
+  variant's fused kernel agrees with the step-by-step loop.
+- **The training reward is forward velocity plus a per-step bonus, minus a
+  penalty once at a fall, with an optional gate on torso height**, all
+  template constants of the rollout kernel and parameters of the loop
+  backends, so the same population evaluates identically on either.
+- Nothing else changed: v7's step size and noise scale except in the
+  noise-scale variant, hidden width sixteen, the 500-step horizon.
+- The two v14 rewards were re-run in this session as references and
+  reproduced v14's outcomes seed for seed.
+
 ## Reproduce
 
 ```
@@ -1895,6 +1967,7 @@ uv run bench_aba.py       # v11: the articulated-body formulation to K = 64, ~35
 uv run bench_hopper.py --max-exp 18  # v12: the hopper with one hard contact, ~20 min
 uv run bench_legged.py    # v13: C legs and C contacts, block Gauss-Seidel, ~45 min
 uv run bench_es.py --task legged4 --backends metal --ns 256 1024 4096 16384 --seeds 0 1 2 --time-budget 120  # v14
+uv run bench_es.py --task legged2_gated --backends metal --ns 1024 4096 --seeds 0 1 2 --time-budget 120     # v15, one variant
 uv run ppo.py --n 256  # one PPO run with a per-iteration log
 ```
 
@@ -1940,7 +2013,9 @@ uv run ppo.py --n 256  # one PPO run with a per-iteration log
   redundant-contact tests and the sweep with the iteration study.
 - `legged_rollout_metal.py`: v14, the ES rollout on the legged body as one
   kernel, policy and contact physics inline; the legged tasks live in
-  `es.py`, whose fitness is now the environment's reward sum everywhere.
+  `es.py`, whose fitness is now the environment's reward sum everywhere,
+  and whose v15 variants shape that reward with a per-step bonus, a fall
+  penalty and a height gate, all evaluated on one canonical score.
 - `es.py`, `cartpole_rollout_metal.py`, `acrobot_rollout_metal.py`,
   `test_es.py`, `bench_es.py`: v7 and v8, Evolution Strategies on three
   backends for either task, the two whole-rollout kernels, tests including
@@ -1967,6 +2042,7 @@ environments. v11: the O(K) articulated-body formulation, which wins
 outright. v12: a hopper with one hard contact, and the finding that
 branching on it costs nothing. v13: C legs and C contacts through a
 fixed-sweep Gauss-Seidel solver, with its price list. v14: the ES learner on
-those bodies, which walks on four legs and stands on two. Each shipped
-complete. Not here: reward shaping to get the biped walking, three
+those bodies, which walks on four legs and stands on two. v15: seven
+rewards for the biped, none of which changes that. Each shipped complete.
+Not here: a curriculum or a different learner for the biped, three
 dimensions, anything beyond one machine.
