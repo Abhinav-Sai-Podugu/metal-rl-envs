@@ -14,7 +14,7 @@ hardware. Nobody had for Metal.
 
 ## Results at a glance
 
-Thirteen versions, each one question, each asked because of the previous
+Fourteen versions, each one question, each asked because of the previous
 answer. Every number is the median of repeated runs on the same M3 Pro and
 can be regenerated with one command; the section for each version carries
 its table, its plot and its own methodology.
@@ -34,8 +34,9 @@ its table, its plot and its own methodology.
 | v11 | Does changing the algorithm beat changing the kernel? | Yes: an O(K) formulation with O(K) state per thread | 5.6x at K = 16; runs to K = 64 where a mass matrix cannot |
 | v12 | Do contacts break the batch? | No: an exact hard contact costs nothing extra, and branching on it costs nothing on Metal | 617M steps/s, 600x numpy at N = 262K, branchy = select |
 | v13 | Do multiple contacts break the batch? | No; the iterative solver has a price list: each doubling of sweeps halves the error for a fifth to a third of the step | four contacts at 24M steps/s, 357x numpy |
+| v14 | Can the learner learn to walk? | The quadruped, yes; the biped stands forever under an alive bonus and dives without one | a gait in 200 to 500 generations, half the seeds, 4 billion contact steps in 52 s |
 
-Four things held across all thirteen:
+Four things held across all fourteen:
 
 - **The arithmetic is never the cost, until the body weighs as much as
   Acrobot; past that, the algorithm is.** Memory layout (v1), launch count
@@ -1726,6 +1727,156 @@ median of 3, N to 65,536, eight sweeps. `results/legged.csv`;
 - The plot shows numpy and the chained kernel only, for legibility; the
   compiled MLX and eager kernel rows are in the tables and the CSV.
 
+## v14: can the learner learn to walk?
+
+The four-legged body, yes: **half the seeds learn a gait within two
+minutes**, 0.2 m/s sustained for the whole horizon without a fall, in 200
+to 500 generations on the fused kernel with the contact physics inline. The
+biped, no: every run at every population converges within a generation to
+standing still and never leaves it. The difference is the reward and the
+body, not the learner, and not the batch.
+
+![ES on the four-legged body: seconds and generations to the walking threshold against population size](results/es_legged4.png)
+
+v7's Evolution Strategies with the rollout fused into one kernel, as on
+CartPole and Acrobot, now carrying v13's contact solver: each thread runs
+its member's policy, one three-way torque head per leg, and the four
+substeps of mass matrix, Cholesky and block Gauss-Seidel for the horizon,
+accumulating the environment's reward, forward velocity plus one per step,
+until the body falls. Fitness is the reward sum on every task now, which
+makes CartPole and Acrobot the same rule with their thresholds unchanged.
+Hidden width sixteen on the legged bodies, so a four-leg thread's weights
+and physics stay under the 4 KB private-memory limit. Three seeds, the
+kernel backend, a 120 s budget; the MLX loop backend at one population as
+a same-session reference. The walking threshold is a score of 600: the
+alive bonus of 500 plus a forward pace of 0.2 m/s for the full horizon.
+
+- **The biped stands and never walks.** Twelve of twelve runs, from 256 to
+  16,384 members, reach a score of 500.7 within a generation and hold it
+  for all 500 generations: the alive bonus for standing, almost no forward
+  motion. Any perturbation that moves the body risks the fall that forfeits
+  the bonus, so rank normalisation pushes only toward not falling. The MLX
+  loop backend reproduces the same scores to the step at 1.8x the kernel's
+  time.
+- **The quadruped walks.** Six of twelve runs reach the threshold, in 197
+  to 499 generations and 25 to 105 seconds; the medians sit at 595 to 600
+  for 256 to 4,096 members, and at 16,384 the budget cuts runs off at
+  213 to 276 generations rather than the landscape. Four legs can shift
+  weight and shuffle forward without leaving the standing basin; two legs
+  from one hip cannot move without risking the fall.
+- **Removing the alive bonus frees the biped and exposes the next trap.**
+  With fitness as forward velocity alone, threshold 100 for the same pace,
+  one biped seed in six walks, three settle into a shuffle at a score of
+  44, and two dive: a lunge and a fall within a few steps, which is why
+  those runs used a twentieth of the environment steps. On the quadruped
+  two seeds in six walk, two shuffle, and two stall at a score of one,
+  falling at once from the first generation on, where every perturbation
+  of a falling policy also falls and the ranks carry no gradient.
+- **The environment is consumed.** The biped kernel runs 79M useful
+  environment steps per second at 16,384 members, the quadruped 16M with
+  its eight Gauss-Seidel sweeps per substep, all of it inside the learner's
+  inner loop: 4 billion contact-physics steps in 52 seconds of training.
+
+### Tables
+
+Seconds are training time, median over solved seeds; the score tables give
+the median and best final score of the mean policy over all seeds, solved or
+not, which is the number that matters where the threshold is not reached.
+`uv run bench_es.py --task legged2 --backends metal --ns 256 1024 4096 16384 --seeds 0 1 2 --time-budget 120`
+and the same for `legged4`, `legged2_distance` and `legged4_distance`
+regenerate them. The four-leg distance sweep finished after the machine had
+gone to battery; its scores and generation counts are deterministic per
+seed and unaffected, its seconds may be slow.
+
+Biped, reward with alive bonus:
+
+| N | metal: s to solve | metal: generations to solve | solved |
+|--:|--:|--:|--:|
+| 256 | — | — | 0/3 |
+| 1,024 | — | — | 0/3 |
+| 4,096 | — | — | 0/3 |
+| 16,384 | — | — | 0/3 |
+
+| P | metal: env steps / s |
+|--:|--:|
+| 256 | 3.6M |
+| 1,024 | 14.3M |
+| 4,096 | 56.1M |
+| 16,384 | 78.7M |
+
+| P | metal: median final score | metal: best seed |
+|--:|--:|--:|
+| 256 | 501 | 501 |
+| 1,024 | 501 | 501 |
+| 4,096 | 501 | 501 |
+| 16,384 | 501 | 501 |
+
+Biped on the MLX loop backend, same seeds:
+
+| P | mlx: median final score | mlx: best seed |
+|--:|--:|--:|
+| 256 | 501 | 501 |
+
+Quadruped, reward with alive bonus:
+
+| N | metal: s to solve | metal: generations to solve | solved |
+|--:|--:|--:|--:|
+| 256 | 49.5 | 389 | 1/3 |
+| 1,024 | 40.6 | 316 | 2/3 |
+| 4,096 | 49 | 354 | 2/3 |
+| 16,384 | 105 | 213 | 1/3 |
+
+| P | metal: env steps / s |
+|--:|--:|
+| 256 | 0.9M |
+| 1,024 | 3.7M |
+| 4,096 | 13.8M |
+| 16,384 | 15.8M |
+
+| P | metal: median final score | metal: best seed |
+|--:|--:|--:|
+| 256 | 595 | 600 |
+| 1,024 | 600 | 602 |
+| 4,096 | 600 | 601 |
+| 16,384 | 569 | 601 |
+
+Biped, forward velocity alone:
+
+| N | metal: s to solve | metal: generations to solve | solved |
+|--:|--:|--:|--:|
+| 1,024 | 16.3 | 459 | 1/3 |
+| 4,096 | — | — | 0/3 |
+
+| P | metal: median final score | metal: best seed |
+|--:|--:|--:|
+| 1,024 | 44 | 102 |
+| 4,096 | 43 | 44 |
+
+Quadruped, forward velocity alone:
+
+| N | metal: s to solve | metal: generations to solve | solved |
+|--:|--:|--:|--:|
+| 1,024 | 47.4 | 365 | 1/3 |
+| 4,096 | 45.7 | 320 | 1/3 |
+
+| P | metal: median final score | metal: best seed |
+|--:|--:|--:|
+| 1,024 | 25 | 100 |
+| 4,096 | 25 | 100 |
+
+### v14 methodology
+
+- **The fused kernel agrees with the step-by-step loop** on reward sum and
+  step count for over 95% of a random population on every task, the legged
+  ones included, from the same initial states; chaotic trajectories account
+  for the rest. The distance-only fitness is checked the same way.
+- **Nothing was tuned for the legged bodies.** Step size, noise scale,
+  horizon and the ES machinery are v7's; the hidden width is sixteen for the
+  memory reason above; the thresholds are stated pace targets, not tuned
+  numbers.
+- The episode ends at the first fall, so a member's steps and reward stop
+  there; an episode that never falls runs the full 500-step horizon.
+
 ## Reproduce
 
 ```
@@ -1743,6 +1894,7 @@ uv run bench_pendulum.py  # v9/v10: the K-link pendulum, body size as the axis, 
 uv run bench_aba.py       # v11: the articulated-body formulation to K = 64, ~35 min
 uv run bench_hopper.py --max-exp 18  # v12: the hopper with one hard contact, ~20 min
 uv run bench_legged.py    # v13: C legs and C contacts, block Gauss-Seidel, ~45 min
+uv run bench_es.py --task legged4 --backends metal --ns 256 1024 4096 16384 --seeds 0 1 2 --time-budget 120  # v14
 uv run ppo.py --n 256  # one PPO run with a per-iteration log
 ```
 
@@ -1786,6 +1938,9 @@ uv run ppo.py --n 256  # one PPO run with a per-iteration log
   `bench_legged.py`: v13, a torso with C legs and C hard contacts solved by
   block Gauss-Seidel, in all three implementations, with convergence and
   redundant-contact tests and the sweep with the iteration study.
+- `legged_rollout_metal.py`: v14, the ES rollout on the legged body as one
+  kernel, policy and contact physics inline; the legged tasks live in
+  `es.py`, whose fitness is now the environment's reward sum everywhere.
 - `es.py`, `cartpole_rollout_metal.py`, `acrobot_rollout_metal.py`,
   `test_es.py`, `bench_es.py`: v7 and v8, Evolution Strategies on three
   backends for either task, the two whole-rollout kernels, tests including
@@ -1811,6 +1966,7 @@ arithmetic. v10: a SIMD-cooperative solve for it, which wins only with few
 environments. v11: the O(K) articulated-body formulation, which wins
 outright. v12: a hopper with one hard contact, and the finding that
 branching on it costs nothing. v13: C legs and C contacts through a
-fixed-sweep Gauss-Seidel solver, with its price list. Each shipped
-complete. Not here: three dimensions, a learner on the legged bodies,
-anything beyond one machine.
+fixed-sweep Gauss-Seidel solver, with its price list. v14: the ES learner on
+those bodies, which walks on four legs and stands on two. Each shipped
+complete. Not here: reward shaping to get the biped walking, three
+dimensions, anything beyond one machine.
