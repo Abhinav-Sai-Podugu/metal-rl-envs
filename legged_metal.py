@@ -69,6 +69,68 @@ void impulse2(float Att, float Atn, float Ann, float wt, float wn, float depth, 
     bool active = touching && ln > 0.0f && wn < target;
     *ln_out = active ? ln : 0.0f; *lt_out = active ? lt : 0.0f;
 }}
+
+// SUBSTEPS semi-implicit Euler substeps with block Gauss-Seidel contacts, in place on q, v.
+template <uint C, uint ITERS, uint SUBSTEPS>
+void legged_substeps(thread float* q, thread float* v, thread const float* tq) {{
+    const uint n = 3 + C;
+    for (uint sub = 0; sub < SUBSTEPS; sub++) {{
+        float Jt[C][n], Jn[C][n], dx[C], dy[C], depth[C];
+        for (uint k = 0; k < C; k++) {{
+            float a = q[2] + q[3 + k], ca = metal::cos(a), sa = metal::sin(a), ad = v[2] + v[3 + k];
+            for (uint i = 0; i < n; i++) {{ Jt[k][i] = 0.0f; Jn[k][i] = 0.0f; }}
+            Jt[k][0] = 1.0f; Jt[k][2] = L * ca; Jt[k][3 + k] = L * ca;
+            Jn[k][1] = 1.0f; Jn[k][2] = L * sa; Jn[k][3 + k] = L * sa;
+            dx[k] = -L * sa * ad * ad; dy[k] = L * ca * ad * ad;
+            depth[k] = -(q[1] - L * ca);
+        }}
+        float M[n * n], f[n];
+        for (uint i = 0; i < n; i++) {{
+            float fi = -G * (i == 1 ? M_T : 0.0f);
+            for (uint k = 0; k < C; k++) fi -= M_F * (Jt[k][i] * dx[k] + Jn[k][i] * dy[k]) + G * M_F * Jn[k][i];
+            if (i >= 3) fi += tq[i - 3];
+            f[i] = fi;
+            for (uint j = 0; j < n; j++) {{
+                float m = (i == j) ? (i < 2 ? M_T : (i == 2 ? I_T : 0.0f)) : 0.0f;
+                for (uint k = 0; k < C; k++) m += M_F * (Jt[k][i] * Jt[k][j] + Jn[k][i] * Jn[k][j]);
+                M[i * n + j] = m;
+            }}
+        }}
+        chol<n>(M);
+        solve<n>(M, f);
+        float vf[n];
+        for (uint i = 0; i < n; i++) vf[i] = v[i] + H * f[i];
+        float MiJt[C][n], MiJn[C][n];
+        for (uint k = 0; k < C; k++) {{
+            for (uint i = 0; i < n; i++) {{ MiJt[k][i] = Jt[k][i]; MiJn[k][i] = Jn[k][i]; }}
+            solve<n>(M, MiJt[k]); solve<n>(M, MiJn[k]);
+        }}
+        // Delassus blocks and free relative velocities
+        float A[C][C][4], w0t[C], w0n[C], lt[C], ln[C];
+        for (uint k = 0; k < C; k++) {{
+            w0t[k] = 0.0f; w0n[k] = 0.0f; lt[k] = 0.0f; ln[k] = 0.0f;
+            for (uint i = 0; i < n; i++) {{ w0t[k] += Jt[k][i] * vf[i]; w0n[k] += Jn[k][i] * vf[i]; }}
+            for (uint l = 0; l < C; l++) {{
+                float tt = 0.0f, tn = 0.0f, nt = 0.0f, nn = 0.0f;
+                for (uint i = 0; i < n; i++) {{ tt += Jt[k][i] * MiJt[l][i]; tn += Jt[k][i] * MiJn[l][i]; nt += Jn[k][i] * MiJt[l][i]; nn += Jn[k][i] * MiJn[l][i]; }}
+                A[k][l][0] = tt; A[k][l][1] = tn; A[k][l][2] = nt; A[k][l][3] = nn;
+            }}
+        }}
+        // block projected Gauss-Seidel: each contact exact given the others
+        for (uint it = 0; it < ITERS; it++) {{
+            for (uint k = 0; k < C; k++) {{
+                float wt = w0t[k], wn = w0n[k];
+                for (uint l = 0; l < C; l++) if (l != k) {{ wt += A[k][l][0] * lt[l] + A[k][l][1] * ln[l]; wn += A[k][l][2] * lt[l] + A[k][l][3] * ln[l]; }}
+                impulse2(A[k][k][0], A[k][k][1], A[k][k][3], wt, wn, depth[k], &lt[k], &ln[k]);
+            }}
+        }}
+        for (uint i = 0; i < n; i++) {{
+            float vi = vf[i];
+            for (uint k = 0; k < C; k++) vi += MiJt[k][i] * lt[k] + MiJn[k][i] * ln[k];
+            v[i] = vi; q[i] += H * vi;
+        }}
+    }}
+}}
 """
 
 _SOURCE = """
@@ -80,62 +142,7 @@ _SOURCE = """
     for (uint i = 0; i < n; i++) { q[i] = state[i * N + e]; v[i] = state[(n + i) * N + e]; }
     float tq[C];
     { uint a = uint(action[e]); for (uint k = 0; k < C; k++) { tq[k] = (float(a % 3) - 1.0f) * TORQUE; a /= 3; } }
-    for (uint sub = 0; sub < SUBSTEPS; sub++) {
-        float Jt[C][n], Jn[C][n], dx[C], dy[C], depth[C];
-        for (uint k = 0; k < C; k++) {
-            float a = q[2] + q[3 + k], ca = metal::cos(a), sa = metal::sin(a), ad = v[2] + v[3 + k];
-            for (uint i = 0; i < n; i++) { Jt[k][i] = 0.0f; Jn[k][i] = 0.0f; }
-            Jt[k][0] = 1.0f; Jt[k][2] = L * ca; Jt[k][3 + k] = L * ca;
-            Jn[k][1] = 1.0f; Jn[k][2] = L * sa; Jn[k][3 + k] = L * sa;
-            dx[k] = -L * sa * ad * ad; dy[k] = L * ca * ad * ad;
-            depth[k] = -(q[1] - L * ca);
-        }
-        float M[n * n], f[n];
-        for (uint i = 0; i < n; i++) {
-            float fi = -G * (i == 1 ? M_T : 0.0f);
-            for (uint k = 0; k < C; k++) fi -= M_F * (Jt[k][i] * dx[k] + Jn[k][i] * dy[k]) + G * M_F * Jn[k][i];
-            if (i >= 3) fi += tq[i - 3];
-            f[i] = fi;
-            for (uint j = 0; j < n; j++) {
-                float m = (i == j) ? (i < 2 ? M_T : (i == 2 ? I_T : 0.0f)) : 0.0f;
-                for (uint k = 0; k < C; k++) m += M_F * (Jt[k][i] * Jt[k][j] + Jn[k][i] * Jn[k][j]);
-                M[i * n + j] = m;
-            }
-        }
-        chol<n>(M);
-        solve<n>(M, f);
-        float vf[n];
-        for (uint i = 0; i < n; i++) vf[i] = v[i] + H * f[i];
-        float MiJt[C][n], MiJn[C][n];
-        for (uint k = 0; k < C; k++) {
-            for (uint i = 0; i < n; i++) { MiJt[k][i] = Jt[k][i]; MiJn[k][i] = Jn[k][i]; }
-            solve<n>(M, MiJt[k]); solve<n>(M, MiJn[k]);
-        }
-        // Delassus blocks and free relative velocities
-        float A[C][C][4], w0t[C], w0n[C], lt[C], ln[C];
-        for (uint k = 0; k < C; k++) {
-            w0t[k] = 0.0f; w0n[k] = 0.0f; lt[k] = 0.0f; ln[k] = 0.0f;
-            for (uint i = 0; i < n; i++) { w0t[k] += Jt[k][i] * vf[i]; w0n[k] += Jn[k][i] * vf[i]; }
-            for (uint l = 0; l < C; l++) {
-                float tt = 0.0f, tn = 0.0f, nt = 0.0f, nn = 0.0f;
-                for (uint i = 0; i < n; i++) { tt += Jt[k][i] * MiJt[l][i]; tn += Jt[k][i] * MiJn[l][i]; nt += Jn[k][i] * MiJt[l][i]; nn += Jn[k][i] * MiJn[l][i]; }
-                A[k][l][0] = tt; A[k][l][1] = tn; A[k][l][2] = nt; A[k][l][3] = nn;
-            }
-        }
-        // block projected Gauss-Seidel: each contact exact given the others
-        for (uint it = 0; it < ITERS; it++) {
-            for (uint k = 0; k < C; k++) {
-                float wt = w0t[k], wn = w0n[k];
-                for (uint l = 0; l < C; l++) if (l != k) { wt += A[k][l][0] * lt[l] + A[k][l][1] * ln[l]; wn += A[k][l][2] * lt[l] + A[k][l][3] * ln[l]; }
-                impulse2(A[k][k][0], A[k][k][1], A[k][k][3], wt, wn, depth[k], &lt[k], &ln[k]);
-            }
-        }
-        for (uint i = 0; i < n; i++) {
-            float vi = vf[i];
-            for (uint k = 0; k < C; k++) vi += MiJt[k][i] * lt[k] + MiJn[k][i] * ln[k];
-            v[i] = vi; q[i] += H * vi;
-        }
-    }
+    legged_substeps<C, ITERS, SUBSTEPS>(q, v, tq);
     bool d = q[1] < FALL_HEIGHT || metal::abs(q[2]) > FALL_ANGLE;
     uint hsh = seed[0] ^ (e * 0x9E3779B9u);
     for (uint i = 0; i < 2 * n; i++) {

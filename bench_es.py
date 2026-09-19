@@ -33,6 +33,19 @@ def sweep(args):
     return rows
 
 
+def score_table(rows, ns, series, seeds):
+    """Median final score of the mean policy over all seeds, solved or not: the number that matters
+    when a task's threshold is not reached within the budget."""
+    lines = ["| P | " + " | ".join(f"{s}: median final score | {s}: best seed" for s in series) + " |", "|--:|" + "--:|" * (2 * len(series))]
+    for n in ns:
+        cells = []
+        for s in series:
+            v = [r["score"] for r in rows if r["series"] == s and r["n"] == n]
+            cells += [f"{statistics.median(v):.0f}" if v else "—", f"{max(v):.0f}" if v else "—"]
+        lines.append(f"| {n:,} | " + " | ".join(cells) + " |")
+    return "\n".join(lines)
+
+
 def throughput_table(rows, ns, series):
     lines = ["| P | " + " | ".join(f"{s}: env steps / s" for s in series) + " |", "|--:|" + "--:|" * len(series)]
     for n in ns:
@@ -49,7 +62,8 @@ def parse_args():
     p.add_argument("--task", choices=list(es.TASKS), default="cartpole")
     p.add_argument("--ns", type=int, nargs="+", default=[64, 256, 1024, 4096, 16384, 65536], help="population sizes")
     p.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2, 3, 4])
-    p.add_argument("--backends", nargs="+", default=list(es.BACKENDS), choices=list(es.BACKENDS))
+    p.add_argument("--backends", nargs="+", default=None, choices=list(es.BACKENDS),
+                   help="default: all three; on the legged tasks mlx and metal, numpy being too slow there")
     p.add_argument("--lrs", type=float, nargs="+", default=[0.1])
     p.add_argument("--series", choices=["backend", "lr"], default="backend")
     p.add_argument("--time-budget", type=float, default=300.0)
@@ -59,6 +73,8 @@ def parse_args():
 
 def main():
     args = parse_args()
+    if args.backends is None:
+        args.backends = ["mlx", "metal"] if args.task.startswith("legged") else list(es.BACKENDS)
     if args.out is None:
         args.out = "es" if args.task == "cartpole" else f"es_{args.task}"
     RESULTS.mkdir(exist_ok=True)
@@ -74,8 +90,10 @@ def main():
     print()
     print(throughput_table(rows, args.ns, series))
     print()
+    print(score_table(rows, args.ns, series, args.seeds))
+    print()
     cfg = es.Config()
-    print(f"task={args.task} hidden={cfg.hidden} sigma={cfg.sigma} lrs={args.lrs} horizon={cfg.horizon} time_budget={args.time_budget}s seeds={args.seeds}")
+    print(f"task={args.task} hidden={es.TASKS[args.task].hidden} sigma={cfg.sigma} lrs={args.lrs} horizon={cfg.horizon} time_budget={args.time_budget}s seeds={args.seeds}")
 
 
 if __name__ == "__main__":
