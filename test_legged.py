@@ -29,13 +29,13 @@ def test_one_leg_is_the_hopper():
 def standing_drift(c, iters, substeps=400):
     """Max coordinate drift of the standing pose after `substeps` with no torque: the creep a
     fixed number of Gauss-Seidel sweeps leaves on strongly coupled contacts."""
-    body = env.Legged(c)
+    pose = env.static_pose(c)
     d = 3 + c
-    q = body.stand[:d].astype(np.float32)[:, None]; v = np.zeros((d, 1), dtype=np.float32)
+    q = pose[:d].astype(np.float32)[:, None]; v = np.zeros((d, 1), dtype=np.float32)
     tq = [np.zeros(1, dtype=np.float32)] * c
     for _ in range(substeps):
         q, v = env.substep(np, q, v, tq, env.cholesky_np, c, iters=iters)
-    return float(np.abs(q[:, 0] - body.stand[:d]).max())
+    return float(np.abs(q[:, 0] - pose[:d]).max())
 
 
 def test_standing_on_two_legs_converges_with_iterations():
@@ -44,6 +44,15 @@ def test_standing_on_two_legs_converges_with_iterations():
     drifts = [standing_drift(2, k) for k in (1, 4, env.ITERS, 32, 256)]
     assert all(a > b for a, b in zip(drifts, drifts[1:])), drifts
     assert drifts[-1] < 1e-6 and drifts[2] < 1e-2, drifts
+
+
+def test_redundant_contacts_converge_too():
+    """Four legs as two coincident pairs: a singular contact matrix. Each block stays well posed and
+    the stand converges monotonically with sweeps, but slowly along the redundant directions: about a
+    millimetre over four seconds remains at 256 sweeps, against nothing for two independent contacts."""
+    drifts = [standing_drift(4, k) for k in (1, env.ITERS, 64, 256)]
+    assert all(a > b for a, b in zip(drifts, drifts[1:])), drifts
+    assert drifts[-1] < 5e-3 and drifts[1] < 2e-2, drifts
 
 
 def test_drop_on_two_legs_lands_without_bounce():

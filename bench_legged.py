@@ -57,6 +57,7 @@ def parse_args():
     p.add_argument("--eval-every", type=int, default=32)
     p.add_argument("--sweeps", type=int, default=legged_np.ITERS, help="Gauss-Seidel sweeps in the N sweep")
     p.add_argument("--study", type=int, nargs="+", default=[1, 2, 4, 8, 16, 32])
+    p.add_argument("--only-study", action="store_true", help="skip the N sweep; print the iteration study only")
     return p.parse_args()
 
 
@@ -64,6 +65,9 @@ def main():
     args = parse_args()
     RESULTS.mkdir(exist_ok=True)
     print(bench.environment_line(), flush=True)
+    if args.only_study:
+        print(iteration_study([c for c in args.cs if c > 1], args.study, 65536, args.iters, args.warmup, args.repeats))
+        return
     all_rows = []
     for c in args.cs:
         print(f"--- C = {c}", flush=True)

@@ -32,6 +32,16 @@ def leg_angles(c):
     return np.linspace(-0.25 * (c - 1), 0.25 * (c - 1), c) if c > 1 else np.zeros(1)
 
 
+def static_pose(c):
+    """A true equilibrium with every foot on the floor, for accuracy measurements: legs splayed to
+    ±0.25 rad, which for C = 4 means two coincident pairs, redundant contacts that make the contact
+    matrix singular and stress a Gauss-Seidel solver. The reset pose (stand_pose) is not static for
+    C > 2: its outer legs hang in the air on free joints."""
+    angles = np.array([-0.25, 0.25] * (c // 2)) if c > 1 else np.zeros(1)
+    q = np.concatenate([[0.0, L * np.cos(np.abs(angles).min()), 0.0], np.sort(angles)])
+    return np.concatenate([q, np.zeros_like(q)]).astype(np.float32)
+
+
 def stand_pose(c):
     angles = leg_angles(c)
     q = np.concatenate([[0.0, L * np.cos(np.abs(angles).min()), 0.0], angles])
