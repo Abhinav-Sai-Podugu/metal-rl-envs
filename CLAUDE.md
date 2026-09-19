@@ -3,9 +3,9 @@
 Abhinav is starting this project here. This file is the handoff; he takes the
 session from this point. Read it, then work with him directly.
 
-## Status (2026-09-18)
+## Status (2026-09-19)
 
-v1 to v12 are shipped and public. v1: batched CartPole, numpy vs MLX, GPU
+v1 to v13 are shipped and public. v1: batched CartPole, numpy vs MLX, GPU
 wins above N ≈ 4K, peaks at 19x. v2: PPO; the update, not the environment,
 is the bottleneck. v3: one hand-written Metal kernel beats mx.compile 1.7x
 to 2.9x, 1.25B steps/s at N = 1M. v4: on Acrobot the kernel beats numpy at
@@ -16,11 +16,12 @@ the same on Acrobot in 11 to 20 ms. v9: a K-link pendulum; a Metal thread
 over ~4 KB private memory returns wrong results silently. v10: kernel
 tricks move a heavy body by at most a tenth. v11: Featherstone's O(K)
 formulation is 5.6x the mass-matrix kernel at K = 16, runs to K = 64. v12:
-a hopper with one exact hard contact steps at 617M/s, 600x numpy at
-N = 262K; branching on contact costs nothing against selecting; the mixed
-regime's apparent penalty was the random-action draw. Findings, tables and
-methodology are in README.md. Open: multiple contacts, three dimensions.
-This is the stopping point.
+a hopper with one exact hard contact at 617M/s, 600x numpy; branching on
+contact costs nothing. v13: C legs and C contacts by block Gauss-Seidel;
+four contacts at 24M/s, 357x numpy; each doubling of sweeps halves the
+error for a fifth to a third of the step; redundant contacts converge but
+never fully. Findings, tables and methodology are in README.md. Open: three
+dimensions, a learner on the legged bodies. This is the stopping point.
 
 ## What this is
 

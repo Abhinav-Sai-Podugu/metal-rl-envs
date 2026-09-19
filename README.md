@@ -14,7 +14,7 @@ hardware. Nobody had for Metal.
 
 ## Results at a glance
 
-Twelve versions, each one question, each asked because of the previous
+Thirteen versions, each one question, each asked because of the previous
 answer. Every number is the median of repeated runs on the same M3 Pro and
 can be regenerated with one command; the section for each version carries
 its table, its plot and its own methodology.
@@ -33,8 +33,9 @@ its table, its plot and its own methodology.
 | v10 | Does a SIMD-cooperative solve rescue heavy bodies? | Only with few environments; at large N the per-thread state is the bound | 2x at N = 256, 0.4x at N = 65,536 for K = 16 |
 | v11 | Does changing the algorithm beat changing the kernel? | Yes: an O(K) formulation with O(K) state per thread | 5.6x at K = 16; runs to K = 64 where a mass matrix cannot |
 | v12 | Do contacts break the batch? | No: an exact hard contact costs nothing extra, and branching on it costs nothing on Metal | 617M steps/s, 600x numpy at N = 262K, branchy = select |
+| v13 | Do multiple contacts break the batch? | No; the iterative solver has a price list: each doubling of sweeps halves the error for a fifth to a third of the step | four contacts at 24M steps/s, 357x numpy |
 
-Four things held across all twelve:
+Four things held across all thirteen:
 
 - **The arithmetic is never the cost, until the body weighs as much as
   Acrobot; past that, the algorithm is.** Memory layout (v1), launch count
@@ -1565,11 +1566,171 @@ experiment in about twenty minutes.
   or tilted past one radian; reset is the standing pose with noise of 0.05,
   which alone places some feet up to five centimetres below the floor.
 
+## v13: do multiple contacts break the batch?
+
+No, and the iterative solver they need has a measurable price list. A torso
+with four legs and four coupled hard contacts, solved by eight projected
+Gauss-Seidel sweeps every substep, steps at **24M environment steps per
+second** on the kernel, 357x numpy; each doubling of the sweep count halves
+the solver's error and costs a fifth to a third of the step.
+
+![Torso with C legs and C hard contacts: numpy and the Metal kernel against N for C = 1, 2, 4](results/legged.png)
+
+v12's hopper generalised: one torso, C massless legs from the hip with a
+foot mass each, 3 + C coordinates, one torque level per leg so 3^C actions,
+C contacts. C = 1 is the hopper exactly, and the tests check that it
+reproduces v12 to float precision. With more than one contact the contact
+problem has no closed form, so it is solved the way GPU physics engines
+solve it: block projected Gauss-Seidel, a fixed number of sweeps over the
+contacts, each contact solved exactly (v12's solve) given the others'
+current impulses. Same three implementations, same tests as v12 where they
+apply, and three new ones: two-leg standing that converges with sweeps,
+four legs as two coincident pairs (redundant contacts, a singular contact
+matrix), and convergence on the states a random policy visits.
+
+- **Cost rises steeply with contacts.** At N = 65,536 the chained kernel
+  does 149M steps per second with one leg, 95M with two and 24M with four:
+  four times the cost per step for twice the contacts, from the (3+C)²
+  mass matrix, 2C + 1 solves, C² contact-matrix blocks and C block solves
+  per sweep. numpy's step is thousands of array calls at C = 4 and peaks at
+  95K steps per second, so the GPU's lead widens to 357x. The kernel beats
+  numpy at N = 1 for every C, by 9x to 31x.
+- **Sweeps buy accuracy at a stated price.** Measured at N = 65,536 with the
+  chained kernel, and as the creep of a static stand over four seconds,
+  which a converged solver leaves at zero:
+
+| sweeps | C = 2: kernel steps/s at N = 65,536 | C = 2: stand creep over 4 s | C = 4: kernel steps/s at N = 65,536 | C = 4: stand creep over 4 s |
+|--:|--:|--:|--:|--:|
+| 1 | 148,587,531 | 43.81 mm | 27,656,704 | 87.18 mm |
+| 2 | 130,199,428 | 30.04 mm | 27,492,110 | 48.52 mm |
+| 4 | 130,241,539 | 12.72 mm | 26,196,758 | 15.01 mm |
+| 8 | 112,607,332 | 7.51 mm | 24,300,548 | 6.26 mm |
+| 16 | 85,876,189 | 3.41 mm | 21,181,268 | 2.76 mm |
+| 32 | 58,376,177 | 1.79 mm | 17,752,265 | 1.83 mm |
+
+  Two legs from one hip are strongly coupled contacts and the error falls
+  like one over the sweep count: 44 mm of creep at one sweep, 7.5 mm at the
+  default eight, 1.8 mm at thirty-two, for 2.5x the step's cost from one
+  sweep to thirty-two. The four-leg column is two coincident leg pairs, a
+  singular contact matrix; it converges the same way but never fully, about
+  a millimetre remaining at 256 sweeps against nothing for two independent
+  contacts, and its sweeps are a smaller share of a step that the mass
+  matrix dominates.
+- **On the states an agent visits, convergence is geometric with rare
+  stalls.** Against a 1,024-sweep reference the 99th-percentile velocity
+  error after eight sweeps is 0.04, after sixteen 0.003, after thirty-two
+  under 0.001; one state in four hundred, a near-redundant pair of feet,
+  stalls at 0.09 even between 256 and 1,024 sweeps. That is how fixed-sweep
+  solvers behave in engines, and the tests assert the percentiles and bound
+  the stall fraction rather than the maximum.
+- **Generality costs when the contact count is one.** The hopper through
+  this solver at eight sweeps runs at 149M steps per second where v12's
+  exact kernel ran at 562M at the same N: 3.8x for sweeps that a single
+  contact does not need. The sweep count should follow the contact count.
+
+### Tables
+
+Same machine and conditions, v9's parameters: 64 timed iterations after 8,
+median of 3, N to 65,536, eight sweeps. `results/legged.csv`;
+`uv run bench_legged.py` regenerates the sweep and the study in about
+45 minutes, `--only-study` the study alone.
+
+<details><summary>C = 1 legs, per N</summary>
+
+| N | numpy | mlx compiled, eval every 32 | metal kernel, eval every step | metal kernel, eval every 32 | best GPU / numpy |
+|--:|--:|--:|--:|--:|--:|
+| 1 | 752 | 625 | 4,604 | 15,667 | 20.83x |
+| 2 | 1,424 | 1,240 | 9,141 | 33,461 | 23.50x |
+| 4 | 2,868 | 2,542 | 18,205 | 71,182 | 24.82x |
+| 8 | 6,045 | 4,913 | 33,624 | 138,453 | 22.90x |
+| 16 | 12,190 | 9,789 | 68,155 | 280,199 | 22.99x |
+| 32 | 24,322 | 19,191 | 136,160 | 556,799 | 22.89x |
+| 64 | 46,979 | 37,825 | 273,430 | 1,044,454 | 22.23x |
+| 128 | 82,222 | 74,255 | 539,234 | 2,003,832 | 24.37x |
+| 256 | 161,632 | 145,507 | 1,095,087 | 4,193,767 | 25.95x |
+| 512 | 273,007 | 293,796 | 2,207,082 | 8,672,224 | 31.77x |
+| 1,024 | 427,187 | 560,567 | 4,127,927 | 16,666,637 | 39.01x |
+| 2,048 | 627,199 | 1,098,365 | 8,776,139 | 32,522,052 | 51.85x |
+| 4,096 | 802,077 | 2,147,534 | 16,802,666 | 58,013,043 | 72.33x |
+| 8,192 | 845,107 | 4,193,295 | 32,296,671 | 92,173,738 | 109.07x |
+| 16,384 | 811,240 | 8,389,374 | 55,601,809 | 154,697,157 | 190.69x |
+| 32,768 | 769,339 | 15,691,652 | 88,069,531 | 190,938,047 | 248.18x |
+| 65,536 | 850,377 | 22,671,071 | 132,826,766 | 149,103,862 | 175.34x |
+
+</details>
+
+<details><summary>C = 2 legs, per N</summary>
+
+| N | numpy | mlx compiled, eval every 32 | metal kernel, eval every step | metal kernel, eval every 32 | best GPU / numpy |
+|--:|--:|--:|--:|--:|--:|
+| 1 | 356 | 132 | 3,257 | 2,435 | 9.15x |
+| 2 | 721 | 235 | 5,783 | 8,406 | 11.66x |
+| 4 | 1,308 | 471 | 11,315 | 18,566 | 14.19x |
+| 8 | 2,840 | 912 | 8,919 | 38,825 | 13.67x |
+| 16 | 5,702 | 1,696 | 12,466 | 76,035 | 13.33x |
+| 32 | 10,804 | 2,937 | 47,457 | 184,627 | 17.09x |
+| 64 | 21,488 | 6,224 | 89,593 | 370,299 | 17.23x |
+| 128 | 39,208 | 11,848 | 149,297 | 463,105 | 11.81x |
+| 256 | 73,741 | 23,104 | 239,011 | 1,174,933 | 15.93x |
+| 512 | 123,613 | 48,542 | 584,079 | 2,069,765 | 16.74x |
+| 1,024 | 187,502 | 90,868 | 1,220,992 | 6,011,558 | 32.06x |
+| 2,048 | 263,350 | 175,164 | 2,737,918 | 11,531,980 | 43.79x |
+| 4,096 | 325,701 | 345,244 | 5,533,125 | 25,270,952 | 77.59x |
+| 8,192 | 318,158 | 677,099 | 20,034,602 | 48,248,289 | 151.65x |
+| 16,384 | 346,348 | 1,332,811 | 33,478,993 | 61,819,883 | 178.49x |
+| 32,768 | 273,551 | 2,663,033 | 45,995,219 | 79,330,900 | 290.00x |
+| 65,536 | 281,436 | 4,925,765 | 62,579,563 | 94,601,960 | 336.14x |
+
+</details>
+
+<details><summary>C = 4 legs, per N</summary>
+
+| N | numpy | mlx compiled, eval every 32 | metal kernel, eval every step | metal kernel, eval every 32 | best GPU / numpy |
+|--:|--:|--:|--:|--:|--:|
+| 1 | 112 | 53 | 2,085 | 3,477 | 31.04x |
+| 2 | 241 | 104 | 4,178 | 7,350 | 30.50x |
+| 4 | 442 | 210 | 8,563 | 14,729 | 33.32x |
+| 8 | 949 | 430 | 18,459 | 31,492 | 33.18x |
+| 16 | 1,556 | 835 | 36,666 | 64,363 | 41.36x |
+| 32 | 3,330 | 1,671 | 72,910 | 123,609 | 37.12x |
+| 64 | 6,925 | 3,281 | 145,981 | 231,931 | 33.49x |
+| 128 | 10,169 | 6,682 | 281,548 | 473,290 | 46.54x |
+| 256 | 23,977 | 12,743 | 535,412 | 929,512 | 38.77x |
+| 512 | 31,565 | 24,695 | 1,024,418 | 1,790,569 | 56.73x |
+| 1,024 | 33,516 | 42,832 | 2,131,492 | 3,555,524 | 106.08x |
+| 2,048 | 71,579 | 83,897 | 4,091,631 | 6,623,534 | 92.53x |
+| 4,096 | 94,593 | 176,351 | 8,444,874 | 11,994,372 | 126.80x |
+| 8,192 | 65,805 | 355,558 | 12,336,865 | 14,924,773 | 226.80x |
+| 16,384 | 59,705 | 534,232 | 14,646,195 | 17,904,839 | 299.89x |
+| 32,768 | 63,549 | 1,231,973 | 18,408,194 | 21,876,344 | 344.24x |
+| 65,536 | 66,410 | 1,647,529 | 21,022,759 | 23,727,258 | 357.28x |
+
+</details>
+
+### v13 methodology
+
+- **The solver is v12's exact single-contact solve applied per block**, so
+  every property that held for one contact holds for each block given the
+  others; the fixed sweep count and the fixed contact order are the only
+  new choices, and both are what engines use on GPUs.
+- **Accuracy is measured two ways**: the creep of a true static pose over
+  400 substeps with no torque, which isolates the solver's residual from
+  dynamics, and the velocity error against a 1,024-sweep reference on 400
+  states reached by a random policy. The reset pose is not the static one
+  for C = 4, since its outer legs hang in the air on free joints; the static
+  pose splays the legs to ±0.25 rad, which at four legs means two coincident
+  pairs.
+- **Both ports agree with numpy** to 1e-3 on 300 random states per C with a
+  third to a half of the feet in contact, and the kernel's resets and a
+  100-step lazy chain are checked at C = 4.
+- The plot shows numpy and the chained kernel only, for legibility; the
+  compiled MLX and eager kernel rows are in the tables and the CSV.
+
 ## Reproduce
 
 ```
 uv sync
-uv run python test_cartpole.py && uv run python test_acrobot.py && uv run python test_pendulum.py && uv run python test_pendulum_aba.py && uv run python test_hopper.py && uv run python test_ppo.py && uv run python test_dqn.py && uv run python test_es.py
+uv run python test_cartpole.py && uv run python test_acrobot.py && uv run python test_pendulum.py && uv run python test_pendulum_aba.py && uv run python test_hopper.py && uv run python test_legged.py && uv run python test_ppo.py && uv run python test_dqn.py && uv run python test_es.py
 uv run bench.py        # v1: environment throughput sweep, ~3 min
 uv run bench_ppo.py    # v2: PPO wall-clock to solve sweep, ~6 min
 uv run bench_kernel.py # v3: Metal kernel vs compiled step, ~3 min
@@ -1581,6 +1742,7 @@ uv run bench_es.py --task acrobot --time-budget 300  # v8: the same on Acrobot, 
 uv run bench_pendulum.py  # v9/v10: the K-link pendulum, body size as the axis, ~50 min
 uv run bench_aba.py       # v11: the articulated-body formulation to K = 64, ~35 min
 uv run bench_hopper.py --max-exp 18  # v12: the hopper with one hard contact, ~20 min
+uv run bench_legged.py    # v13: C legs and C contacts, block Gauss-Seidel, ~45 min
 uv run ppo.py --n 256  # one PPO run with a per-iteration log
 ```
 
@@ -1620,6 +1782,10 @@ uv run ppo.py --n 256  # one PPO run with a per-iteration log
   `bench_hopper.py`: v12, a planar hopper with one hard contact in all three
   implementations, the select and branchy kernels, the analytic physics
   tests, and the sweep with the divergence experiment.
+- `legged_np.py`, `legged_mlx.py`, `legged_metal.py`, `test_legged.py`,
+  `bench_legged.py`: v13, a torso with C legs and C hard contacts solved by
+  block Gauss-Seidel, in all three implementations, with convergence and
+  redundant-contact tests and the sweep with the iteration study.
 - `es.py`, `cartpole_rollout_metal.py`, `acrobot_rollout_metal.py`,
   `test_es.py`, `bench_es.py`: v7 and v8, Evolution Strategies on three
   backends for either task, the two whole-rollout kernels, tests including
@@ -1644,5 +1810,7 @@ pendulum with body size as the knob, to a hundred times CartPole's
 arithmetic. v10: a SIMD-cooperative solve for it, which wins only with few
 environments. v11: the O(K) articulated-body formulation, which wins
 outright. v12: a hopper with one hard contact, and the finding that
-branching on it costs nothing. Each shipped complete. Not here: more than
-one contact, three dimensions, anything beyond one machine.
+branching on it costs nothing. v13: C legs and C contacts through a
+fixed-sweep Gauss-Seidel solver, with its price list. Each shipped
+complete. Not here: three dimensions, a learner on the legged bodies,
+anything beyond one machine.
