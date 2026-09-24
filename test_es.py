@@ -81,6 +81,29 @@ def test_shaped_reward_kernel_matches_loop_and_canonical_score_ignores_it():
     assert abs(score) < 5.0, score
 
 
+def test_curriculum_anneals_and_agrees_kernel_vs_loop():
+    """The assistance and push anneal linearly to zero by anneal_gens; under assistance the fused kernel
+    and the loop agree, and a random population survives longer than without it."""
+    cfg = es.Config(task="legged2_distance", assist_k0=20.0, start_velocity=0.3, anneal_gens=100)
+    assert es.curriculum(cfg, 1) == (20.0, 0.3) and es.curriculum(cfg, 51) == (10.0, 0.15) and es.curriculum(cfg, 101) == (0.0, 0.0)
+    t = es.TASKS["legged2_distance"]
+    mx.random.seed(0)
+    P = 512
+    theta = mx.random.normal((P, es.n_params(t.hidden, t))) * 0.3
+    state = es.push(mx, t, t.mlx.reset(P), 0.3)
+    mx.eval(theta, state)
+    fk, sk = t.rollout(state, theta, t.hidden, 100, 20.0)
+
+    class Fixed(es.MLXBackend):
+        def reset(self, n):
+            return state
+    fl, sl = es.loop_fitness(Fixed(t, 0), es.unflatten(theta, t.hidden, t), 100, assist=20.0)
+    close = np.abs(np.array(fk) - np.array(fl)) <= 1e-3 * np.maximum(np.abs(np.array(fl)), 1.0) + 1e-2
+    assert close.mean() > 0.95 and (np.array(sk) == np.array(sl)).mean() > 0.95
+    fk0, sk0 = t.rollout(state, theta, t.hidden, 100, 0.0)
+    assert float(sk.mean()) > 1.5 * float(sk0.mean()), "the spring should keep random bipeds up much longer"   # ~2x, capped by the horizon
+
+
 def test_generation_uses_antithetic_pairs_and_moves_theta():
     cfg = es.Config(pop=8, horizon=5)
     backend = es.MetalBackend(CP, 0)

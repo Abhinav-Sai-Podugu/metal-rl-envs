@@ -61,6 +61,8 @@ class Task:
     fall_penalty: float = 0.0  # subtracted once from the training fitness at a fall
     eval_bonus: float = 1.0    # the canonical score used for "solved": bonus 1 keeps the environment's reward
     height_gate: float = 0.0   # forward velocity counts only while the torso is above this height (legged)
+    xdot_row: int | None = None  # state row of the forward velocity, for the starting-push curriculum (legged)
+    assistable: bool = False   # the environment's step accepts a torso-assist stiffness (legged)
 
 
 def _argmax(xp, logits):
@@ -108,8 +110,8 @@ def _legged_task(c, name, alive=1.0, fall=0.0, gate=0.0):
     return Task(f"legged{c}{name}", 5 + 2 * c, 3 * c, 16, 100.0,
                 legged_np.Legged(c), legged_mlx.Legged(c), legged_metal.Legged(c),
                 _legged_obs, _legged_action(c),
-                lambda state, theta, hidden, horizon: legged_rollout_metal.rollout(state, theta, hidden, horizon, c, alive, fall, gate),
-                alive, fall, 0.0, gate)
+                lambda state, theta, hidden, horizon, assist=0.0: legged_rollout_metal.rollout(state, theta, hidden, horizon, c, alive, fall, gate, assist),
+                alive, fall, 0.0, gate, 3 + c, True)
 
 
 TASKS = {
@@ -141,6 +143,10 @@ class Config:
     solved_at: float | None = None   # overrides the task's threshold (tests)
     max_generations: int = 500
     time_budget: float = 120.0
+    # curriculum (v16): both aids apply to training rollouts only and anneal linearly to zero by anneal_gens
+    assist_k0: float = 0.0         # initial stiffness of a spring-damper holding the torso upright
+    start_velocity: float = 0.0    # initial forward velocity given to every training episode
+    anneal_gens: int = 300
 
 
 def n_params(hidden, task):
@@ -165,18 +171,18 @@ def population_logits(xp, obs, params):
     return xp.einsum("ph,pho->po", h, w2) + b2
 
 
-def loop_fitness(backend, params, horizon):
+def loop_fitness(backend, params, horizon, assist=0.0, start_velocity=0.0):
     """(reward sum until first termination, steps taken) for each member, stepping the whole
     population once per iteration. Used by the numpy and mlx backends."""
     xp, task = backend.xp, backend.task
     P = params[0].shape[0]
-    state = backend.reset(P)
+    state = push(xp, task, backend.reset(P), start_velocity)
     alive = xp.ones((P,)) > 0
     fit = xp.zeros((P,))
     steps = xp.zeros((P,))
     for t in range(horizon):
         action = task.action(xp, population_logits(xp, backend.obs(state), params))
-        state, reward, done = backend.step(state, action)
+        state, reward, done = backend.step(state, action, assist) if task.assistable else backend.step(state, action)
         steps = steps + alive.astype(steps.dtype)
         fell = alive & done
         alive = alive & ~done
@@ -187,15 +193,34 @@ def loop_fitness(backend, params, horizon):
     return fit, steps
 
 
+def push(xp, task, state, start_velocity):
+    """The starting-push curriculum: add a forward velocity to every episode's initial state."""
+    if not start_velocity or task.xdot_row is None:
+        return state
+    bump = xp.zeros_like(state)
+    if xp is np:
+        bump[task.xdot_row] = start_velocity
+    else:
+        bump = mx.concatenate([bump[: task.xdot_row], bump[task.xdot_row : task.xdot_row + 1] + start_velocity, bump[task.xdot_row + 1 :]])
+    return state + bump
+
+
+def curriculum(cfg, gen):
+    """Assistance stiffness and starting push at generation `gen`, annealed linearly to zero by anneal_gens."""
+    ramp = max(0.0, 1.0 - (gen - 1) / cfg.anneal_gens) if cfg.anneal_gens > 0 else 0.0
+    return cfg.assist_k0 * ramp, cfg.start_velocity * ramp
+
+
 def centered_ranks(xp, values):
     return xp.argsort(xp.argsort(values)).astype(values.dtype) / (values.shape[0] - 1) - 0.5
 
 
-def generation(backend, theta, cfg, hidden):
+def generation(backend, theta, cfg, hidden, gen=1):
     xp = backend.xp
     half = backend.normal((cfg.pop // 2, theta.shape[0]))
     eps = xp.concatenate([half, -half], axis=0)
-    fit, steps = backend.rollout(theta[None, :] + cfg.sigma * eps, hidden, cfg.horizon)
+    assist, start_velocity = curriculum(cfg, gen)
+    fit, steps = backend.rollout(theta[None, :] + cfg.sigma * eps, hidden, cfg.horizon, assist, start_velocity)
     grad = (centered_ranks(xp, fit)[:, None] * eps).sum(axis=0) / (cfg.pop * cfg.sigma)
     theta = theta + cfg.lr * grad
     backend.sync(theta)
@@ -216,8 +241,8 @@ class MLXBackend:
     def reset(self, n):
         return self.task.mlx.reset(n)
 
-    def step(self, state, action):
-        return self.task.metal.step(state, action)
+    def step(self, state, action, assist=None):
+        return self.task.metal.step(state, action) if assist is None else self.task.metal.step(state, action, mx.array(float(assist)))
 
     def obs(self, state):
         return self.task.obs(mx, state)
@@ -228,15 +253,18 @@ class MLXBackend:
     def to_mx(self, theta):
         return theta
 
-    def rollout(self, theta_pop, hidden, horizon):
-        return loop_fitness(self, unflatten(theta_pop, hidden, self.task), horizon)
+    def rollout(self, theta_pop, hidden, horizon, assist=0.0, start_velocity=0.0):
+        return loop_fitness(self, unflatten(theta_pop, hidden, self.task), horizon, assist, start_velocity)
 
 
 class MetalBackend(MLXBackend):
     """Same sampling, ranking and update as mlx; the rollout is one kernel launch."""
 
-    def rollout(self, theta_pop, hidden, horizon):
-        return self.task.rollout(self.reset(theta_pop.shape[0]), theta_pop, hidden, horizon)
+    def rollout(self, theta_pop, hidden, horizon, assist=0.0, start_velocity=0.0):
+        state = push(mx, self.task, self.reset(theta_pop.shape[0]), start_velocity)
+        if self.task.assistable:
+            return self.task.rollout(state, theta_pop, hidden, horizon, assist)
+        return self.task.rollout(state, theta_pop, hidden, horizon)
 
 
 class NumpyBackend:
@@ -252,8 +280,8 @@ class NumpyBackend:
     def reset(self, n):
         return self.task.np.reset(n, self.rng)
 
-    def step(self, state, action):
-        return self.task.np.step(state, action, self.rng)
+    def step(self, state, action, assist=None):
+        return self.task.np.step(state, action, self.rng) if assist is None else self.task.np.step(state, action, self.rng, float(assist))
 
     def obs(self, state):
         return self.task.obs(np, state)
@@ -264,8 +292,8 @@ class NumpyBackend:
     def to_mx(self, theta):
         return mx.array(theta)
 
-    def rollout(self, theta_pop, hidden, horizon):
-        return loop_fitness(self, unflatten(theta_pop, hidden, self.task), horizon)
+    def rollout(self, theta_pop, hidden, horizon, assist=0.0, start_velocity=0.0):
+        return loop_fitness(self, unflatten(theta_pop, hidden, self.task), horizon, assist, start_velocity)
 
 
 BACKENDS = {"numpy": NumpyBackend, "mlx": MLXBackend, "metal": MetalBackend}
@@ -314,7 +342,7 @@ def train(cfg, backend_name, seed, log=lambda *_: None):
     train_seconds, env_steps, score = 0.0, 0, 0.0
     for gen in range(1, cfg.max_generations + 1):
         start = time.perf_counter()
-        theta, fit, steps = generation(backend, theta, cfg, hidden)
+        theta, fit, steps = generation(backend, theta, cfg, hidden, gen)
         train_seconds += time.perf_counter() - start
         env_steps += int(steps.sum())
         score = evaluate(task, mean_policy(backend.to_mx(theta), hidden, task))

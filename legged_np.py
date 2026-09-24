@@ -54,8 +54,9 @@ def torques(xp, action, c):
            [(((action // 3**k) % 3) - 1).astype(xp.float32) * TORQUE for k in range(c)]
 
 
-def substep(xp, q, v, torque, cholesky, c, iters=ITERS, mu=MU):
-    """One semi-implicit Euler substep of H with block-PGS contact resolution over C feet."""
+def substep(xp, q, v, torque, cholesky, c, iters=ITERS, mu=MU, assist=0.0):
+    """One semi-implicit Euler substep of H with block-PGS contact resolution over C feet. `assist` is
+    the stiffness of a spring-damper holding the torso upright, a curriculum aid (v16), zero in the real task."""
     n = 3 + c
     zero = xp.zeros_like(q[0])
     one = zero + 1.0
@@ -76,6 +77,7 @@ def substep(xp, q, v, torque, cholesky, c, iters=ITERS, mu=MU):
              - GRAVITY * (M_F * sum(Jn[k][i] for k in range(c)) + (M_T if i == 1 else 0.0)) for i in range(n)]
     for k in range(c):
         force[3 + k] = force[3 + k] + torque[k]
+    force[2] = force[2] - assist * q[2] - 0.1 * assist * v[2]
     Mmat = xp.stack([xp.stack(row) for row in M])
     v_free = [v[i] + H * acc for i, acc in enumerate(cholesky(Mmat, xp.stack(force), n))]
     MiJt = [cholesky(Mmat, xp.stack(Jt[k]), n) for k in range(c)]
@@ -109,21 +111,21 @@ class Legged:
     def reset(self, n, rng):
         return self.stand[:, None] + rng.uniform(-RESET_BOUND, RESET_BOUND, size=(2 * (3 + self.c), n)).astype(np.float32)
 
-    def step(self, state, action, rng):
+    def step(self, state, action, rng, assist=0.0):
         n = state.shape[1]
-        stepped = self._physics(state, action)
+        stepped = self._physics(state, action, assist)
         done = self._terminated(stepped)
         fresh = self.reset(n, rng)
         next_state = np.where(done[None, :], fresh, stepped)
         reward = np.where(done, 0.0, stepped[3 + self.c] + 1.0).astype(np.float32)
         return next_state, reward, done
 
-    def _physics(self, state, action):
+    def _physics(self, state, action, assist=0.0):
         d = 3 + self.c
         q, v = state[:d], state[d:]
         torque = torques(np, action, self.c)
         for _ in range(SUBSTEPS):
-            q, v = substep(np, q, v, torque, cholesky_np, self.c, self.iters)
+            q, v = substep(np, q, v, torque, cholesky_np, self.c, self.iters, assist=assist)
         return np.concatenate([q, v])
 
     def _terminated(self, state):

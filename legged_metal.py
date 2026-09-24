@@ -72,7 +72,7 @@ void impulse2(float Att, float Atn, float Ann, float wt, float wn, float depth, 
 
 // SUBSTEPS semi-implicit Euler substeps with block Gauss-Seidel contacts, in place on q, v.
 template <uint C, uint ITERS, uint SUBSTEPS>
-void legged_substeps(thread float* q, thread float* v, thread const float* tq) {{
+void legged_substeps(thread float* q, thread float* v, thread const float* tq, float assist) {{
     const uint n = 3 + C;
     for (uint sub = 0; sub < SUBSTEPS; sub++) {{
         float Jt[C][n], Jn[C][n], dx[C], dy[C], depth[C];
@@ -89,6 +89,7 @@ void legged_substeps(thread float* q, thread float* v, thread const float* tq) {
             float fi = -G * (i == 1 ? M_T : 0.0f);
             for (uint k = 0; k < C; k++) fi -= M_F * (Jt[k][i] * dx[k] + Jn[k][i] * dy[k]) + G * M_F * Jn[k][i];
             if (i >= 3) fi += tq[i - 3];
+            if (i == 2) fi -= assist * q[2] + 0.1f * assist * v[2];   // curriculum spring-damper on the torso
             f[i] = fi;
             for (uint j = 0; j < n; j++) {{
                 float m = (i == j) ? (i < 2 ? M_T : (i == 2 ? I_T : 0.0f)) : 0.0f;
@@ -142,7 +143,7 @@ _SOURCE = """
     for (uint i = 0; i < n; i++) { q[i] = state[i * N + e]; v[i] = state[(n + i) * N + e]; }
     float tq[C];
     { uint a = uint(action[e]); for (uint k = 0; k < C; k++) { tq[k] = (float(a % 3) - 1.0f) * TORQUE; a /= 3; } }
-    legged_substeps<C, ITERS, SUBSTEPS>(q, v, tq);
+    legged_substeps<C, ITERS, SUBSTEPS>(q, v, tq, assist[0]);
     bool d = q[1] < FALL_HEIGHT || metal::abs(q[2]) > FALL_ANGLE;
     uint hsh = seed[0] ^ (e * 0x9E3779B9u);
     for (uint i = 0; i < 2 * n; i++) {
@@ -161,7 +162,7 @@ class Legged:
         self.stand = mx.array(stand_pose(c))
         self.kernel = mx.fast.metal_kernel(
             name=f"legged{c}_step",
-            input_names=["state", "action", "seed", "stand"],
+            input_names=["state", "action", "seed", "stand", "assist"],
             output_names=["next_state", "reward", "done"],
             header=_HEADER,
             source=_SOURCE,
@@ -170,11 +171,12 @@ class Legged:
     def reseed(self, seed=0):
         self.calls = seed
 
-    def step(self, state, action):
+    def step(self, state, action, assist=None):
         self.calls += 1
         n = state.shape[1]
+        assist = mx.zeros((1,)) if assist is None else mx.reshape(assist, (1,)).astype(mx.float32)
         return self.kernel(
-            inputs=[state, action, mx.array([self.calls], dtype=mx.uint32), self.stand],
+            inputs=[state, action, mx.array([self.calls], dtype=mx.uint32), self.stand, assist],
             template=[("C", self.c), ("ITERS", self.iters), ("SUBSTEPS", SUBSTEPS)],
             grid=(n, 1, 1),
             threadgroup=(min(n, 256), 1, 1),

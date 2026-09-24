@@ -49,7 +49,7 @@ _SOURCE = """
             if (l2 > best) { torque = 1.0f; }
             tq[leg] = torque * TORQUE;
         }
-        legged_substeps<C, ITERS, SUBSTEPS>(q, v, tq);
+        legged_substeps<C, ITERS, SUBSTEPS>(q, v, tq, assist[0]);
         if (q[1] < FALL_HEIGHT || metal::abs(q[2]) > FALL_ANGLE) { taken += 1.0f; total -= float(FALL); break; }
         total += (q[1] >= float(GATE_CENTI) / 100.0f ? v[0] : 0.0f) + float(ALIVE_CENTI) / 100.0f;   // shaped reward: forward velocity (only with the torso above the gate) + alive bonus
         taken += 1.0f;
@@ -60,20 +60,20 @@ _SOURCE = """
 
 _kernel = mx.fast.metal_kernel(
     name="legged_es_rollout",
-    input_names=["state", "theta"],
+    input_names=["state", "theta", "assist"],
     output_names=["fitness", "steps"],
     header=_HEADER,
     source=_SOURCE,
 )
 
 
-def rollout(state, theta_pop, hidden, horizon, c, alive_bonus=1.0, fall_penalty=0.0, height_gate=0.0):
+def rollout(state, theta_pop, hidden, horizon, c, alive_bonus=1.0, fall_penalty=0.0, height_gate=0.0, assist=0.0):
     """(fitness, steps taken) for each of P members from `state` (2(3+C), P), lazily. Fitness is the
     shaped reward summed to the first fall: forward velocity plus `alive_bonus` per step, minus
     `fall_penalty` once if the body falls. The bonus is passed in hundredths, templates being integers."""
     n = state.shape[1]
     return _kernel(
-        inputs=[state, theta_pop],
+        inputs=[state, theta_pop, mx.array([float(assist)])],
         template=[("C", c), ("H", hidden), ("HORIZON", horizon), ("ITERS", ITERS), ("SUBSTEPS", SUBSTEPS),
                   ("ALIVE_CENTI", int(round(100 * alive_bonus))), ("FALL", int(round(fall_penalty))), ("GATE_CENTI", int(round(100 * height_gate)))],
         grid=(n, 1, 1),
