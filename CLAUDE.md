@@ -3,9 +3,9 @@
 Abhinav is starting this project here. This file is the handoff; he takes the
 session from this point. Read it, then work with him directly.
 
-## Status (2026-09-19)
+## Status (2026-09-24)
 
-v1 to v15 are shipped and public. v1: batched CartPole, numpy vs MLX, GPU
+v1 to v16 are shipped and public. v1: batched CartPole, numpy vs MLX, GPU
 wins above N ≈ 4K, peaks at 19x. v2: PPO; the update, not the environment,
 is the bottleneck. v3: one hand-written Metal kernel beats mx.compile 1.7x
 to 2.9x, 1.25B steps/s at N = 1M. v4: on Acrobot the kernel beats numpy at
@@ -20,8 +20,13 @@ v13: C legs and C contacts by block Gauss-Seidel with its price list. v14:
 ES walks on four legs, stands on two. v15: seven shaped rewards for the
 biped; every one lands it on standing (any fall cost), a shuffle at 44 or a
 dive (no fall cost, or wider noise); 2 walkers in 42 runs; the body decides
-what a reward can do. Findings, tables and methodology are in README.md.
-Open: a curriculum or another learner for the biped, three dimensions.
+what a reward can do. v16: two annealed curricula for the biped; a torso
+spring under the alive bonus walks it in 3 of 6 seeds, because the
+spring's withdrawal at generation 300 knocks a population that leaned
+on it out of standing, and a population that stood unaided never
+notices; a starting push changes nothing. Findings, tables and
+methodology are in README.md. Open: another learner for the biped,
+three dimensions.
 This is the stopping point.
 
 ## What this is

@@ -36,8 +36,9 @@ its table, its plot and its own methodology.
 | v13 | Do multiple contacts break the batch? | No; the iterative solver has a price list: each doubling of sweeps halves the error for a fifth to a third of the step | four contacts at 24M steps/s, 357x numpy |
 | v14 | Can the learner learn to walk? | The quadruped, yes; the biped stands forever under an alive bonus and dives without one | a gait in 200 to 500 generations, half the seeds, 4 billion contact steps in 52 s |
 | v15 | Can reward shaping get the biped walking? | No: every reward lands it on standing, a shuffle or a dive; the body decides what a reward can do | 2 walkers in 42 runs under seven rewards |
+| v16 | Does a curriculum get the biped walking? | An annealed torso spring under the alive bonus, in half the seeds; the withdrawal is the mechanism, and only a body leaning on the spring feels it; a starting push changes nothing | 3 walkers in 6 at generations 468 to 498; 0 to 1 in 6 under the other three pairs |
 
-Four things held across all fifteen:
+Four things held across all sixteen:
 
 - **The arithmetic is never the cost, until the body weighs as much as
   Acrobot; past that, the algorithm is.** Memory layout (v1), launch count
@@ -1949,6 +1950,120 @@ not reported.
 - The two v14 rewards were re-run in this session as references and
   reproduced v14's outcomes seed for seed.
 
+## v16: does a curriculum get the biped walking?
+
+One does, in half its seeds, and the trace of a run says why. Two
+curricula, each annealed linearly to nothing over the first 300
+generations: a torso-assist spring that holds the body upright while it
+learns, and a starting push that launches every episode at 0.3 m/s. Each
+ran under the two v14 rewards, forward velocity alone and velocity with
+the alive bonus. Three of the four pairs reproduced v15's outcomes to the
+attractor: the shuffle, the dive, standing. The fourth, the spring under
+the alive bonus, walked in three seeds of six, under the reward that left
+all twelve of v14's runs standing. The mechanism is the spring's
+withdrawal, not its presence: a population that drifts forward while the
+spring makes falling impossible is knocked out of standing when the
+spring goes, and has to balance a body already in motion. A population
+that stood still under the spring never notices its removal, and stands
+for a thousand generations.
+
+The learner, body, kernel, rewards and canonical score are v14's and
+v15's; only the curricula are new. The spring adds a torque of
+−k·pitch − 0.1·k·pitch rate on the torso in every substep, k = 20 at
+generation 1 and zero from generation 301, in the rollout kernel and both
+loop backends. The push adds 0.3 m/s to the torso's forward velocity at
+the start of every training episode, annealed the same way. The score
+used for "solved" is measured with neither: the greedy policy's forward
+distance until its first fall, threshold 100. Six runs per pair,
+populations of 1,024 and 4,096, three seeds each, 500 generations, on AC
+power.
+
+| curriculum, annealed to zero by generation 300 | training reward | walked | median score | best | outcomes | generations to walk |
+|---|---|--:|--:|--:|---|--:|
+| none (v14) | forward velocity alone | 1/6 | 44 | 102 | 3 shuffle, 2 dive, 1 walk | 459 |
+| none (v14) | alive bonus 1 per step | 0/6 | 1 | 1 | 6 stand | — |
+| torso spring, k = 20 | forward velocity alone | 1/6 | 43 | 105 | 5 shuffle, 1 walk | 390 |
+| torso spring, k = 20 | alive bonus 1 per step | 3/6 | 51 | 101 | 3 stand, 3 walk | 468, 493, 498 |
+| starting push, 0.3 m/s | forward velocity alone | 0/6 | 33 | 45 | 3 shuffle, 1 shuffle that falls, 2 dive | — |
+| starting push, 0.3 m/s | alive bonus 1 per step | 0/6 | 1 | 1 | 6 stand | — |
+
+Two runs under the spring and the alive bonus, population 1,024, traced
+generation by generation. Fitness is the population's mean training
+reward under whatever spring remains, 500 for a body that stands still
+for the full horizon; the score is the unassisted policy's forward
+distance.
+
+| generation | spring k | seed 2, walked: fitness | score | seed 0, stood: fitness | score |
+|--:|--:|--:|--:|--:|--:|
+| 100 | 13.4 | 508 | 16 | 499 | 1 |
+| 200 | 6.7 | 522 | 1 | 500 | 1 |
+| 275 | 1.7 | 536 | 4 | 500 | 1 |
+| 300 | 0.07 | 426 | 24 | 499 | 1 |
+| 350 | 0 | 528 | 43 | 501 | 1 |
+| 400 | 0 | 522 | 48 | 500 | 1 |
+| 450 | 0 | 487 | 84 | 501 | 1 |
+| 468 | 0 | 506 | 100 | 501 | 1 |
+| 1,000 | 0 | | | 501 | 1 |
+
+- **The withdrawal is the event, and only a body leaning on the spring
+  feels it.** In the seed that walked, fitness runs above 500 through the
+  whole assisted phase: the population drifts forward, which the spring
+  makes safe, while the unassisted score stays below 20, because without
+  the spring that policy falls. At generation 300 the spring is gone,
+  fitness drops to 426 as the bodies fall, and from there the score
+  climbs: 24, 43, 48, 84, 100 at generation 468. In the seed that stood,
+  fitness is 500 to the unit throughout: the population stood still under
+  the spring and, by the time it was gone, stood without it. Nothing
+  happened at generation 300, and nothing had by generation 1,000.
+- **Arriving at the shuffle in motion, the biped leaves it.** v15's
+  shuffle ended every run that reached it at 44. The walking seed here
+  passes 44 at generation 371, spends about fifty generations near it,
+  and climbs again; the three walkers cross 100 in the last forty
+  generations of the budget with the score still rising. What differs is
+  what the policy is doing at 44: v15's shuffler under velocity alone had
+  nothing to avoid, this one is keeping an alive bonus it forfeits by
+  falling, and with the fall avoided the velocity term is what is left to
+  rank on.
+- **The spring under velocity alone changes nothing.** Five shuffles and
+  one walker at generation 390 against v15's three shuffles, two dives and
+  one walker at 459. With no fall cost the body was never in the standing
+  basin, so there is no basin for the withdrawal to lift it out of; the
+  spring removed the dives during the assisted phase and left the shuffle
+  where it was.
+- **The push changes nothing under either reward.** It is a change of
+  initial state rather than of dynamics: the first generations absorb it,
+  and nothing comes to depend on it. Under velocity alone the dives score
+  14 rather than 11, the distance the push carries a falling body, and
+  one seed shuffles then falls two thirds of the way through the horizon.
+  Under the alive bonus a policy that stands after being pushed is still a
+  policy that stands, and all six do.
+- **The spring costs nothing to compute.** 14.2M and 56.0M environment
+  steps per second at populations of 1,024 and 4,096 under the alive
+  bonus, v14's figures to three digits; the torque is two multiply-adds
+  in a substep that already solves two contacts.
+
+### v16 methodology
+
+- **The curricula are functions of the generation**, stiffness and push
+  scaled by max(0, 1 − (g − 1)/300) and passed to the rollout as scalars:
+  a kernel input for the spring, an offset on the reset state for the
+  push. The spring's torque is applied in the substep of all three
+  implementations, so the kernel and the step-by-step loop agree under
+  it; a test checks that agreement, that the anneal reaches zero, and
+  that random policies survive at least half again as long under the
+  spring (about twice, 45 to 90 steps, in practice).
+- **The canonical score is evaluated without either curriculum**, on
+  2,048 fresh episodes of the greedy mean policy every generation, outside
+  the clock, as in v15.
+- **Nothing else changed**: the v14 rewards, hidden width sixteen, v7's
+  step size and noise scale, the 500-step horizon, and the 500-generation
+  budget, which every run reached before its 120 s. The sweep ran on AC
+  power; a walker takes 13.7 to 18.2 s of training.
+- **The traces** are `uv run es.py --task legged2 --assist 20 --seed 2`
+  and the same with `--seed 0 --max-generations 1000`. Outcomes are
+  deterministic per seed, and the traced seed 2 reproduces the sweep's
+  generation 468 exactly.
+
 ## Reproduce
 
 ```
@@ -1968,6 +2083,8 @@ uv run bench_hopper.py --max-exp 18  # v12: the hopper with one hard contact, ~2
 uv run bench_legged.py    # v13: C legs and C contacts, block Gauss-Seidel, ~45 min
 uv run bench_es.py --task legged4 --backends metal --ns 256 1024 4096 16384 --seeds 0 1 2 --time-budget 120  # v14
 uv run bench_es.py --task legged2_gated --backends metal --ns 1024 4096 --seeds 0 1 2 --time-budget 120     # v15, one variant
+uv run bench_es.py --task legged2 --backends metal --ns 1024 4096 --seeds 0 1 2 --time-budget 120 --assist 20  # v16, the pair that walked
+uv run es.py --task legged2 --assist 20 --seed 2  # v16, one walker traced per generation, ~17 s
 uv run ppo.py --n 256  # one PPO run with a per-iteration log
 ```
 
@@ -2016,6 +2133,9 @@ uv run ppo.py --n 256  # one PPO run with a per-iteration log
   `es.py`, whose fitness is now the environment's reward sum everywhere,
   and whose v15 variants shape that reward with a per-step bonus, a fall
   penalty and a height gate, all evaluated on one canonical score.
+  v16 adds two annealed curricula, a torso-assist spring in the substep
+  of every legged implementation and a starting push on the reset
+  state, threaded through the kernel and both loop backends.
 - `es.py`, `cartpole_rollout_metal.py`, `acrobot_rollout_metal.py`,
   `test_es.py`, `bench_es.py`: v7 and v8, Evolution Strategies on three
   backends for either task, the two whole-rollout kernels, tests including
@@ -2043,6 +2163,8 @@ outright. v12: a hopper with one hard contact, and the finding that
 branching on it costs nothing. v13: C legs and C contacts through a
 fixed-sweep Gauss-Seidel solver, with its price list. v14: the ES learner on
 those bodies, which walks on four legs and stands on two. v15: seven
-rewards for the biped, none of which changes that. Each shipped complete.
-Not here: a curriculum or a different learner for the biped, three
-dimensions, anything beyond one machine.
+rewards for the biped, none of which changes that. v16: two annealed
+curricula for it; a torso spring's withdrawal under the alive bonus walks
+it in half the seeds, a starting push does nothing. Each shipped
+complete. Not here: another learner for the biped, three dimensions,
+anything beyond one machine.

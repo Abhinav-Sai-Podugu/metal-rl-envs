@@ -363,8 +363,14 @@ def main():
     p.add_argument("--lr", type=float, default=0.1)
     p.add_argument("--sigma", type=float, default=0.1)
     p.add_argument("--time-budget", type=float, default=120.0)
+    p.add_argument("--max-generations", type=int, default=500)
+    p.add_argument("--assist", type=float, default=0.0, help="torso-assist spring stiffness at generation 1, annealed to zero")
+    p.add_argument("--start-velocity", type=float, default=0.0, help="forward push at episode start, annealed to zero")
+    p.add_argument("--anneal", type=int, default=300, help="generation by which both curricula reach zero")
     args = p.parse_args()
-    cfg = Config(task=args.task, pop=args.pop, lr=args.lr, sigma=args.sigma, time_budget=args.time_budget)
+    cfg = Config(task=args.task, pop=args.pop, lr=args.lr, sigma=args.sigma, time_budget=args.time_budget,
+                 max_generations=args.max_generations, assist_k0=args.assist,
+                 start_velocity=args.start_velocity, anneal_gens=args.anneal)
     result = train(
         cfg, args.backend, args.seed,
         log=lambda gen, es_, secs, fit, score: print(
